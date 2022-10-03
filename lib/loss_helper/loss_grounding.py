@@ -50,8 +50,9 @@ def compute_reference_loss(data_dict, config, no_reference=False):
     batch_size, num_proposals = data_dict['aggregated_vote_features'].shape[:2]
     batch_size, len_nun_max = gt_center_list.shape[:2]
     lang_num = data_dict["lang_num"]
-    max_iou_rate_25 = 0
-    max_iou_rate_5 = 0
+    max_iou_1 = 0
+    max_iou_25 = 0
+    max_iou_5 = 0
 
     if not no_reference:
         cluster_preds = data_dict["cluster_ref"].reshape(batch_size, len_nun_max, num_proposals)
@@ -83,19 +84,22 @@ def compute_reference_loss(data_dict, config, no_reference=False):
 
                 ious_ind = ious.argmax()
                 max_ious = ious[ious_ind]
+                if max_ious >= 0.1:
+                    max_iou_1 += 1
                 if max_ious >= 0.25:
                     labels[j, ious.argmax()] = 1  # treat the bbox with highest iou score as the gt
-                    max_iou_rate_25 += 1
+                    max_iou_25 += 1
                 if max_ious >= 0.5:
-                    max_iou_rate_5 += 1
+                    max_iou_5 += 1
 
         cluster_labels = torch.FloatTensor(labels).cuda()  # B proposals
         gt_labels[i] = labels
         # reference loss
         loss += criterion(cluster_preds[i, :lang_num[i]], cluster_labels[:lang_num[i]].float().clone())
 
-    data_dict['max_iou_rate_0.25'] = max_iou_rate_25 / sum(lang_num.cpu().numpy())
-    data_dict['max_iou_rate_0.5'] = max_iou_rate_5 / sum(lang_num.cpu().numpy())
+    data_dict["max_iou_0.1"] = max_iou_1 / sum(lang_num.cpu().numpy())
+    data_dict["max_iou_0.25"] = max_iou_25 / sum(lang_num.cpu().numpy())
+    data_dict["max_iou_0.5"] = max_iou_5 / sum(lang_num.cpu().numpy())
 
     # print("max_iou_rate", data_dict['max_iou_rate_0.25'], data_dict['max_iou_rate_0.5'])
     cluster_labels = torch.FloatTensor(gt_labels).cuda()  # B len_nun_max proposals

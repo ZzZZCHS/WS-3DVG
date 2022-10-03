@@ -18,7 +18,8 @@ from datetime import datetime
 from copy import deepcopy
 
 sys.path.append(os.path.join(os.getcwd())) # HACK add the root folder
-from data.scannet.model_util_scannet import ScannetDatasetConfig
+from data.scannet.model_util_scannet import ScannetDatasetConfig, SunToScannetDatasetConfig
+from data.sunrgbd.model_util_sunrgbd import SunrgbdDatasetConfig
 from lib.joint.dataset import ScannetReferenceDataset
 from lib.joint.solver_3djcg import Solver
 from lib.configs.config_joint import CONF
@@ -37,9 +38,10 @@ SCANREFER_VAL = json.load(open(os.path.join(CONF.PATH.DATA, "ScanRefer_filtered_
 SCAN2CAD_ROTATION = None # json.load(open(os.path.join(CONF.PATH.SCAN2CAD, "scannet_instance_rotations.json")))
 
 # constants
+# DC = SunToScannetDatasetConfig()
 DC = ScannetDatasetConfig()
-
 import crash_on_ipy
+
 
 def get_dataloader(args, scanrefer, scanrefer_new, all_scene_list, split, config, augment, shuffle=True,
                    scan2cad_rotation=None):
@@ -66,14 +68,15 @@ def get_dataloader(args, scanrefer, scanrefer_new, all_scene_list, split, config
 
 def get_model(args, dataset, device):
     # initiate model
-    input_channels = int(args.use_multiview) * 128 + int(args.use_normal) * 3 + int(args.use_color) * 3 + int(not args.no_height)
+    # input_channels = int(args.use_multiview) * 128 + int(args.use_normal) * 3 + int(args.use_color) * 3 + int(not args.no_height)
+    input_channels = int(not args.no_height)
     model = JointNet(
-        num_class=DC.num_class,
+        # num_class=DC.num_class,
         vocabulary=dataset.vocabulary,
         embeddings=dataset.glove,
-        num_heading_bin=DC.num_heading_bin,
-        num_size_cluster=DC.num_size_cluster,
-        mean_size_arr=DC.mean_size_arr,
+        # num_heading_bin=DC.num_heading_bin,
+        # num_size_cluster=DC.num_size_cluster,
+        # mean_size_arr=DC.mean_size_arr,
         input_feature_dim=input_channels,
         num_proposal=args.num_proposals,
         no_caption=args.no_caption,
@@ -136,26 +139,14 @@ def get_model(args, dataset, device):
     #     model.proposal = pretrained_model.proposal
     #     model.relation = pretrained_model.relation
     print("loading pretrained VoteNet...")
+    pretrained_votenet_weights = torch.load(CONF.PATH.VOTENET_PRETRAIN)
+    # print(pretrained_votenet_weights["model_state_dict"].keys())
+    model.load_state_dict(pretrained_votenet_weights["model_state_dict"], strict=False)
 
-
-    # mount
-
-    if args.no_detection:
-        # freeze pointnet++ backbone
-        for param in model.backbone_net.parameters():
-            param.requires_grad = False
-
-        # freeze voting
-        for param in model.vgen.parameters():
-            param.requires_grad = False
-
-        # freeze detector
-        for param in model.proposal.parameters():
-            param.requires_grad = False
-
-        # freeze relation
-        #for param in model.relation.parameters():
-        #    param.requires_grad = False
+    print("loading pretrained LangModule weights...")
+    pretrained_lang_weights = torch.load(CONF.PATH.LANGMODULE_PRETRAIN)
+    # print(pretrained_lang_weights.keys())
+    model.lang.load_state_dict(pretrained_lang_weights)
 
     # multi-GPU
     if torch.cuda.device_count() > 1:
@@ -446,7 +437,7 @@ if __name__ == "__main__":
     parser.add_argument("--tag", type=str, help="tag for the training, e.g. cuda_wl", default="")
     parser.add_argument("--dataset", type=str, help="Choose a dataset: ScanRefer or ReferIt3D", default="ScanRefer")
     parser.add_argument("--gpu", type=str, help="gpu", default="0")
-    parser.add_argument("--seed", type=int, default=42, help="random seed")
+    parser.add_argument("--seed", type=int, default=3407, help="random seed")
 
     parser.add_argument("--batch_size", type=int, help="batch size", default=10)
     parser.add_argument("--epoch", type=int, help="number of epochs", default=100)
@@ -497,13 +488,18 @@ if __name__ == "__main__":
 
     # # setting
     # os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
-    # os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
 
     # reproducibility
-    torch.manual_seed(args.seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    os.environ['PYTHONHASHSEED'] = str(args.seed)
     np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    # torch.use_deterministic_algorithms(True)
 
     train(args)
     

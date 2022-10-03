@@ -113,8 +113,45 @@ def compute_objectness_loss(data_dict):
     return objectness_loss, objectness_label, objectness_mask, object_assignment
 
 
-def compute_box_loss(data_dict, config, distance_huber_loss_thres=0.15, use_centerness=False):
-    num_heading_bin = config.num_heading_bin
+def compute_box_loss(data_dict, config):
+    if hasattr(config, "sun_num_class"):
+        num_heading_bin = config.sun_num_heading_bin
+        mean_size_arr = config.sun_mean_size_arr
+        num_size_cluster = config.sun_num_size_cluster
+    else:
+        num_heading_bin = config.num_heading_bin
+        mean_size_arr = config.mean_size_arr
+        num_size_cluster = config.num_size_cluster
+
+    # num_heading_bin = 12
+    # num_size_cluster = 10
+    # type2class = {'bed': 0, 'table': 1, 'sofa': 2, 'chair': 3, 'toilet': 4, 'desk': 5, 'dresser': 6,
+    #                    'night_stand': 7, 'bookshelf': 8, 'bathtub': 9}
+    # class2type = {type2class[t]: t for t in type2class}
+    # type_mean_size = {'bathtub': np.array([0.765840, 1.398258, 0.472728]),
+    #                        'bed': np.array([2.114256, 1.620300, 0.927272]),
+    #                        'bookshelf': np.array([0.404671, 1.071108, 1.688889]),
+    #                        'chair': np.array([0.591958, 0.552978, 0.827272]),
+    #                        'desk': np.array([0.695190, 1.346299, 0.736364]),
+    #                        'dresser': np.array([0.528526, 1.002642, 1.172878]),
+    #                        'night_stand': np.array([0.500618, 0.632163, 0.683424]),
+    #                        'sofa': np.array([0.923508, 1.867419, 0.845495]),
+    #                        'table': np.array([0.791118, 1.279516, 0.718182]),
+    #                        'toilet': np.array([0.699104, 0.454178, 0.756250])}
+    # mean_size_arr = np.zeros((num_size_cluster, 3))
+    # for i in range(num_size_cluster):
+    #     mean_size_arr[i, :] = type_mean_size[class2type[i]]
+
+    pred_center = data_dict['center']
+    gt_center = data_dict['center_label'][:, :, 0:3]
+    dist1, ind1, dist2, _ = nn_distance(pred_center, gt_center)  # dist1: BxK, dist2: BxK2
+    box_label_mask = data_dict['box_label_mask']
+    objectness_label = data_dict['objectness_label'].float()
+    centroid_reg_loss1 = \
+        torch.sum(dist1 * objectness_label) / (torch.sum(objectness_label) + 1e-6)
+    centroid_reg_loss2 = \
+        torch.sum(dist2 * box_label_mask) / (torch.sum(box_label_mask) + 1e-6)
+    center_loss = centroid_reg_loss1 + centroid_reg_loss2
 
     gt_heading_class = data_dict['gt_assigned_heading_class']  # (B, N)
     gt_heading_residual = data_dict['gt_assigned_heading_residual']  # (B, N, 3)
@@ -129,25 +166,61 @@ def compute_box_loss(data_dict, config, distance_huber_loss_thres=0.15, use_cent
     criterion_heading_class = nn.CrossEntropyLoss(reduction='none')
     heading_class_loss = criterion_heading_class(data_dict['heading_scores'].transpose(2,1), gt_heading_class)  # (B, N)
     heading_class_loss = torch.sum(heading_class_loss * objectness_label)/(torch.sum(objectness_label)+1e-6)
-
     heading_residual_normalized_label = gt_heading_residual / (np.pi/num_heading_bin)
     heading_label_one_hot = torch.cuda.FloatTensor(batch_size, num_proposal, num_heading_bin).zero_()
     heading_label_one_hot.scatter_(2, gt_heading_class.unsqueeze(-1), 1)
+    # print(pred_heading_residual[0][:10])
+    # print(heading_label_one_hot[0, 0], gt_heading_class[0, 0])
+    # print(data_dict['heading_residuals'][0][:10])
+    # print(data_dict['heading_scores'].size())
+    # print(data_dict['heading_scores'][0][:10])
+
     heading_residual_normalized_loss = huber_loss(torch.sum(data_dict['heading_residuals_normalized']*heading_label_one_hot, -1) - heading_residual_normalized_label, delta=1.0)  # (B, N)
     heading_residual_normalized_loss = torch.sum(heading_residual_normalized_loss*objectness_label)/(torch.sum(objectness_label)+1e-6)
 
-    # 6 distance loss ~ smooth-L1 loss / huber loss
-    rois = data_dict['rois']  # (B, N, 6)
-    distance_loss = torch.mean(huber_loss(rois - gt_distance, delta=distance_huber_loss_thres), -1)  # (B, N)
-    distance_loss = torch.sum(distance_loss * objectness_label)/(torch.sum(objectness_label)+1e-6)
+    # # 6 distance loss ~ smooth-L1 loss / huber loss
+    # rois = data_dict['rois']  # (B, N, 6)
+    # distance_loss = torch.mean(huber_loss(rois - gt_distance, delta=distance_huber_loss_thres), -1)  # (B, N)
+    # distance_loss = torch.sum(distance_loss * objectness_label)/(torch.sum(objectness_label)+1e-6)
 
-    assert (not use_centerness)
+    # assert (not use_centerness)
     # centerness loss ~ BCE loss
     # centerness_scores = data_dict['centerness_scores_0'].view(-1)  # (B*N,)
     # criterion_centerness = nn.BCEWithLogitsLoss(reduction='none')
     # centerness_loss = criterion_centerness(centerness_scores, gt_centerness)
     # centerness_loss = torch.sum(centerness_loss * objectness_mask.view(-1))/(torch.sum(objectness_mask)+1e-6)
-    return heading_class_loss, heading_residual_normalized_loss, distance_loss
+    object_assignment = data_dict['object_assignment']
+
+    size_class_label = torch.gather(data_dict['size_class_label'], 1, object_assignment)  # select (B,K) from (B,K2)
+    # print(data_dict['size_class_label'].size(), object_assignment.size(), size_class_label.size())
+    # print(data_dict['size_class_label'][0][:10], object_assignment[0][:10], size_class_label[0][:10])
+    # !!
+    size_class_label = size_class_label.clamp_max(num_size_cluster-1)
+    criterion_size_class = nn.CrossEntropyLoss(reduction='none')
+    size_class_loss = criterion_size_class(data_dict['size_scores'].transpose(2, 1), size_class_label)  # (B,K)
+    size_class_loss = torch.sum(size_class_loss * objectness_label) / (torch.sum(objectness_label) + 1e-6)
+
+    size_residual_label = torch.gather(data_dict['size_residual_label'], 1,
+                                       object_assignment.unsqueeze(-1).repeat(1, 1, 3))  # select (B,K,3) from (B,K2,3)
+    size_label_one_hot = torch.cuda.FloatTensor(batch_size, size_class_label.shape[1], num_size_cluster).zero_()
+    size_label_one_hot.scatter_(2, size_class_label.unsqueeze(-1), 1)  # src==1 so it's *one-hot* (B,K,num_size_cluster)
+    size_label_one_hot_tiled = size_label_one_hot.unsqueeze(-1).repeat(1, 1, 1, 3)  # (B,K,num_size_cluster,3)
+    # print(size_label_one_hot_tiled[0][0])
+    # print(data_dict['size_residuals_normalized'][0][0])
+    predicted_size_residual_normalized = torch.sum(data_dict['size_residuals_normalized'] * size_label_one_hot_tiled,
+                                                   2)  # (B,K,3)
+
+    mean_size_arr_expanded = torch.from_numpy(mean_size_arr.astype(np.float32)).cuda().unsqueeze(0).unsqueeze(
+        0)  # (1,1,num_size_cluster,3)
+    mean_size_label = torch.sum(size_label_one_hot_tiled * mean_size_arr_expanded, 2)  # (B,K,3)
+    size_residual_label_normalized = size_residual_label / mean_size_label  # (B,K,3)
+    size_residual_normalized_loss = torch.mean(
+        huber_loss(predicted_size_residual_normalized - size_residual_label_normalized, delta=1.0),
+        -1)  # (B,K,3) -> (B,K)
+    size_residual_normalized_loss = torch.sum(size_residual_normalized_loss * objectness_label) / (
+                torch.sum(objectness_label) + 1e-6)
+
+    return center_loss, heading_class_loss, heading_residual_normalized_loss, size_class_loss, size_residual_normalized_loss
 
 
 def recover_assigned_gt_bboxes(data_dict, config, object_assignment):
@@ -229,7 +302,7 @@ def compute_box_and_sem_cls_loss(data_dict, config):
     num_heading_bin = config.num_heading_bin
     num_size_cluster = config.num_size_cluster
     num_class = config.num_class
-    mean_size_arr = config.mean_size_arr
+    # mean_size_arr = config.mean_size_arr
 
     object_assignment = data_dict['object_assignment']
     batch_size = object_assignment.shape[0]
@@ -247,7 +320,7 @@ def compute_box_and_sem_cls_loss(data_dict, config):
     data_dict['gt_assigned_distance'] = gt_assigned_distance
     data_dict['gt_assigned_centerness'] = gt_assigned_centerness
 
-    heading_class_loss, heading_residual_normalized_loss, distance_loss = compute_box_loss(data_dict, config, distance_huber_loss_thres=0.15)
+    center_loss, heading_class_loss, heading_residual_normalized_loss, size_class_loss, size_residual_normalized_loss = compute_box_loss(data_dict, config)
 
     objectness_label = data_dict["objectness_label"]
     # (object level) Semantic cls loss
@@ -255,5 +328,5 @@ def compute_box_and_sem_cls_loss(data_dict, config):
     criterion_sem_cls = nn.CrossEntropyLoss(reduction='none')
     sem_cls_loss = criterion_sem_cls(data_dict['sem_cls_scores'].transpose(2, 1), sem_cls_label)  # (B,K)
     sem_cls_loss = torch.sum(sem_cls_loss * objectness_label.float()) / (torch.sum(objectness_label) + 1e-6)
-    return heading_class_loss, heading_residual_normalized_loss, distance_loss, sem_cls_loss
+    return center_loss, heading_class_loss, heading_residual_normalized_loss, size_class_loss, size_residual_normalized_loss, sem_cls_loss
 

@@ -66,7 +66,7 @@ class Pointnet2Backbone(nn.Module):
 
     def _break_up_pc(self, pc):
         xyz = pc[..., :3].contiguous()
-        features = pc[..., 3:].transpose(1, 2).contiguous() if pc.size(-1) > 3 else None
+        features = pc[..., -1:].transpose(1, 2).contiguous() if pc.size(-1) > 3 else None
 
         return xyz, features
 
@@ -89,7 +89,7 @@ class Pointnet2Backbone(nn.Module):
                 XXX_features: float32 Tensor of shape (B,K,D)
                 XXX-inds: int64 Tensor of shape (B,K) values in [0,N-1]
         """
-        
+        self.eval()
         pointcloud = data_dict["point_clouds"]
 
         batch_size = pointcloud.shape[0]

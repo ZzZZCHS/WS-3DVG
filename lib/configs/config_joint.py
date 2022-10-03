@@ -8,7 +8,7 @@ CONF = copy.deepcopy(CONF_BASE)
 print('Using Joint Config')
 
 # output
-CONF.PATH.OUTPUT = os.path.join(CONF.PATH.BASE, "outputs/exp_joint")
+# CONF.PATH.OUTPUT = os.path.join(CONF.PATH.BASE, "outputs/test")
 
 # train
 CONF.TRAIN = EasyDict()

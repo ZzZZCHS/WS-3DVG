@@ -61,11 +61,12 @@ class ReferenceDataset(Dataset):
             elements = lines[i].split('\t')
             raw_name = elements[1]
             nyu40_name = elements[7]
+            # print(lines[i])
+            # print(raw_name, nyu40_name)
             if nyu40_name not in label_classes_set:
                 raw2label[raw_name] = scannet2label['others']
             else:
                 raw2label[raw_name] = scannet2label[nyu40_name]
-
         return raw2label
 
     def _get_unique_multiple_lookup(self):
@@ -130,7 +131,7 @@ class ReferenceDataset(Dataset):
             scene_id = data["scene_id"]
             object_id = data["object_id"]
             ann_id = data["ann_id"]
-            object_name = data["object_name"]
+            object_name = " ".join(data["object_name"].split("_"))
 
             if scene_id not in lang:
                 lang[scene_id] = {}
@@ -214,12 +215,12 @@ class ReferenceDataset(Dataset):
 
         lang = {}
         lang_main = {}
-        i = 0
+
         for data in self.scanrefer:
             scene_id = data["scene_id"]
             object_id = data["object_id"]
             ann_id = data["ann_id"]
-            object_name = data["object_name"]
+            object_name = " ".join(data["object_name"].split("_"))
 
             if scene_id not in lang:
                 lang[scene_id] = {}
@@ -242,8 +243,11 @@ class ReferenceDataset(Dataset):
             embeddings = np.zeros((CONF.TRAIN.MAX_GROUND_DES_LEN, 300))
             main_embeddings = np.zeros((CONF.TRAIN.MAX_GROUND_DES_LEN, 300))
             pd = 1
-
+            # if object_name[:6] == "shower":
+            #     print(object_name, self.raw2label[object_name] if object_name in self.raw2label else 17)
             main_object_cat = self.raw2label[object_name] if object_name in self.raw2label else 17
+            # if main_object_cat == 17:
+            #     print(object_name)
             for token_id in range(CONF.TRAIN.MAX_GROUND_DES_LEN):
                 if token_id < len(tokens):
                     token = tokens[token_id]
@@ -267,12 +271,20 @@ class ReferenceDataset(Dataset):
                         if object_cat_new != -1:
                             object_cat = object_cat_new
                             is_two_words = 1
+                    # if object_name == "shower_curtain" and object_cat == 13:
+                    #     print(object_name, object_cat)
                     if lang_main[scene_id][object_id][ann_id]["first_obj"] == -1 and object_cat == main_object_cat:
                         if is_two_words == 1 and token_id + 1 < len(tokens):
                             lang_main[scene_id][object_id][ann_id]["first_obj"] = token_id + 1
                         else:
                             lang_main[scene_id][object_id][ann_id]["first_obj"] = token_id
-
+            # if object_name == "shower curtain":
+            #     print(tokens)
+            #     # print(CONF.TRAIN.MAX_GROUND_DES_LEN)
+            #     print(lang_main[scene_id][object_id][ann_id]["first_obj"])
+            #     print(tokens[lang_main[scene_id][object_id][ann_id]["first_obj"]])
+                # print(object_name)
+                # sys.exit()
             if pd == 1:
                 lang_main[scene_id][object_id][ann_id]["len"] = len(tokens)
 

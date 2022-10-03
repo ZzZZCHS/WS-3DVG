@@ -321,6 +321,7 @@ def roty(t):
                     [0,  1,  0],
                     [-s, 0,  c]])
 
+
 def roty_batch(t):
     """Rotation about the y-axis.
     t: (x1,x2,...xn)
@@ -335,6 +336,19 @@ def roty_batch(t):
     output[...,1,1] = 1
     output[...,2,0] = -s
     output[...,2,2] = c
+    return output
+
+
+def roty_torch(t):
+    B, N = t.size()
+    output = torch.zeros((B, N, 3, 3)).to(t.device)
+    c = torch.cos(t)
+    s = torch.sin(t)
+    output[..., 0, 0] = c
+    output[..., 0, 2] = s
+    output[..., 1, 1] = 1
+    output[..., 2, 0] = -s
+    output[..., 2, 2] = c
     return output
 
 
@@ -381,6 +395,30 @@ def get_3d_box_batch(box_size, heading_angle, center):
     tlist += [len(input_shape)+1, len(input_shape)]
     corners_3d = np.matmul(corners_3d, np.transpose(R, tuple(tlist)))
     corners_3d += np.expand_dims(center, -2)
+    return corners_3d
+
+def get_3d_box_torch(box_size, heading_angle, center):
+    ''' box_size: [B, N, 3]
+            heading_angle: [B, N]
+            center: [B, N, 3]
+        Return:
+            [B, N, 8, 3]
+    '''
+    B, N = heading_angle.size()
+    R = roty_torch(heading_angle)  # Actually we should rotz
+    l = box_size[..., 0].unsqueeze(-1)  # [B, N, 1]
+    w = box_size[..., 1].unsqueeze(-1)
+    h = box_size[..., 2].unsqueeze(-1)
+    corners_3d = torch.zeros((B, N, 8, 3)).to(center.device)
+    # corners_3d[...,:,0] = np.concatenate((l/2,l/2,-l/2,-l/2,l/2,l/2,-l/2,-l/2), -1)
+    # corners_3d[...,:,1] = np.concatenate((h/2,h/2,h/2,h/2,-h/2,-h/2,-h/2,-h/2), -1)
+    # corners_3d[...,:,2] = np.concatenate((w/2,-w/2,-w/2,w/2,w/2,-w/2,-w/2,w/2), -1)
+    corners_3d[..., :, 0] = torch.cat((l / 2, l / 2, -l / 2, -l / 2, l / 2, l / 2, -l / 2, -l / 2), -1)
+    corners_3d[..., :, 1] = torch.cat((w / 2, -w / 2, -w / 2, w / 2, w / 2, -w / 2, -w / 2, w / 2), -1)
+    corners_3d[..., :, 2] = torch.cat((h / 2, h / 2, h / 2, h / 2, -h / 2, -h / 2, -h / 2, -h / 2), -1)
+    # print(corners_3d.device, R.device, heading_angle.device, box_size.device, center.device)
+    corners_3d = torch.matmul(corners_3d, R.permute(0, 1, 3, 2))
+    corners_3d += center.unsqueeze(-2)
     return corners_3d
 
 # For Camera View

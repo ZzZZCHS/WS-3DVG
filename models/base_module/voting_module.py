@@ -40,6 +40,7 @@ class VotingModule(nn.Module):
             vote_xyz: (batch_size, num_seed*vote_factor, 3)
             vote_features: (batch_size, vote_feature_dim, num_seed*vote_factor)
         """
+        self.eval()
         batch_size = seed_xyz.shape[0]
         num_seed = seed_xyz.shape[1]
         num_vote = num_seed*self.vote_factor

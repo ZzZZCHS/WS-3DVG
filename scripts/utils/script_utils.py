@@ -1,6 +1,6 @@
 
 
-def set_params_lr_dict(model, base_lr, weight_decay, weight_dict, output=True):
+def set_params_lr_dict(model, base_lr, weight_decay, weight_dict, output=False):
     if output:  # output parms dict
         print('Set params dict lr!', weight_dict, 'Base:', base_lr, weight_decay)
     params_dict = weight_dict

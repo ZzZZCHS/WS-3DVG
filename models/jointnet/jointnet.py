@@ -13,19 +13,20 @@ from models.proposal_module.relation_module import RelationModule
 from models.refnet.match_module import MatchModule
 from models.capnet.caption_module import SceneCaptionModule, TopDownSceneCaptionModule
 
+
 class JointNet(nn.Module):
-    def __init__(self, num_class, num_heading_bin, num_size_cluster, mean_size_arr, vocabulary, embeddings,
+    def __init__(self, vocabulary, embeddings,
                  input_feature_dim=0, num_proposal=128, num_locals=-1, vote_factor=1, sampling="vote_fps",
                  no_caption=False, use_topdown=False, query_mode="corner", num_graph_steps=0, use_relation=False,
                  use_lang_classifier=True, use_bidir=False, no_reference=False,
                  emb_size=300, ground_hidden_size=256, caption_hidden_size=512, dataset_config=None):
         super().__init__()
 
-        self.num_class = num_class
-        self.num_heading_bin = num_heading_bin
-        self.num_size_cluster = num_size_cluster
-        self.mean_size_arr = mean_size_arr
-        assert (mean_size_arr.shape[0] == self.num_size_cluster)
+        # self.num_class = num_class
+        # self.num_heading_bin = num_heading_bin
+        # self.num_size_cluster = num_size_cluster
+        # self.mean_size_arr = mean_size_arr
+        # assert (mean_size_arr.shape[0] == self.num_size_cluster)
         self.input_feature_dim = input_feature_dim
         self.num_proposal = num_proposal
         self.vote_factor = vote_factor
@@ -44,26 +45,17 @@ class JointNet(nn.Module):
         self.vgen = VotingModule(self.vote_factor, 256)
 
         # Vote aggregation and object proposal
-        self.proposal = ProposalModule(num_class, num_heading_bin, num_size_cluster, mean_size_arr, num_proposal, sampling)
+        self.pnet = ProposalModule(num_proposal, sampling, dataset_config=dataset_config)
+
+        # Fix VoteNet
+        for _p in self.parameters():
+            _p.requires_grad = False
 
         self.relation = RelationModule(num_proposals=num_proposal, det_channel=128)  # bef 256
-        if not no_reference:
-            # --------- LANGUAGE ENCODING ---------
-            # Encode the input descriptions into vectors
-            # (including attention and language classification)
-            self.lang = LangModule(num_class, use_lang_classifier, use_bidir, emb_size, ground_hidden_size)
 
-            # --------- PROPOSAL MATCHING ---------
-            # Match the generated proposals and select the most confident ones
-            self.match = MatchModule(num_proposals=num_proposal, lang_size=(1 + int(self.use_bidir)) * ground_hidden_size, det_channel=128)  # bef 256
+        self.lang = LangModule(dataset_config.num_class, use_lang_classifier, use_bidir, emb_size, ground_hidden_size)
 
-        if not no_caption:
-            if use_topdown:
-                self.caption = TopDownSceneCaptionModule(vocabulary, embeddings, emb_size, 128,
-                    caption_hidden_size, num_proposal, num_locals, query_mode, use_relation)
-            else:
-                self.caption = SceneCaptionModule(vocabulary, embeddings, emb_size, 128, caption_hidden_size, num_proposal)
-
+        self.match = MatchModule(num_proposals=num_proposal, lang_size=(1 + int(self.use_bidir)) * ground_hidden_size, det_channel=128)  # bef 256
 
     def forward(self, data_dict, use_tf=True, is_eval=False):
         """ Forward pass of the network
@@ -89,7 +81,6 @@ class JointNet(nn.Module):
         #           DETECTION BRANCH          #
         #                                     #
         #######################################
-
         # --------- HOUGH VOTING ---------
         data_dict = self.backbone_net(data_dict)
 
@@ -107,39 +98,11 @@ class JointNet(nn.Module):
         data_dict["vote_features"] = features
 
         # --------- PROPOSAL GENERATION ---------
-        data_dict = self.proposal(xyz, features, data_dict)
-
+        data_dict = self.pnet(xyz, features, data_dict)
 
         data_dict = self.relation(data_dict)
 
-        if not self.no_reference:
-            #######################################
-            #                                     #
-            #           LANGUAGE BRANCH           #
-            #                                     #
-            #######################################
-
-            # --------- LANGUAGE ENCODING ---------
-            data_dict = self.lang(data_dict)
-
-            #######################################
-            #                                     #
-            #          PROPOSAL MATCHING          #
-            #                                     #
-            #######################################
-
-            # --------- PROPOSAL MATCHING ---------
-            # config for bbox_embedding
-            data_dict = self.match(data_dict)
-
-        #######################################
-        #                                     #
-        #            CAPTION BRANCH           #
-        #                                     #
-        #######################################
-
-        # --------- CAPTION GENERATION ---------
-        # if not self.no_caption:
-        #     data_dict = self.caption(data_dict, use_tf, is_eval)
+        data_dict = self.lang(data_dict)
+        data_dict = self.match(data_dict)
 
         return data_dict

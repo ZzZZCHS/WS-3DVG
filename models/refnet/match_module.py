@@ -33,7 +33,7 @@ class MatchModule(nn.Module):
         Returns:
             scores: (B,num_proposal,2+3+NH*2+NS*4)
         """
-
+ 
         objectness_masks = data_dict['objectness_scores'].max(2)[1].float().unsqueeze(2)  # batch_size, num_proposals, 1
         features = data_dict["bbox_feature"]  # batch_size, num_proposals, feat_size
 

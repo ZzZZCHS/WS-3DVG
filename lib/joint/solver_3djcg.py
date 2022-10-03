@@ -6,6 +6,8 @@ Author: Dave Zhenyu Chen (zhenyu.chen@tum.de)
 import os
 import sys
 import time
+from collections import defaultdict
+
 import torch
 import numpy as np
 from tqdm import tqdm
@@ -36,10 +38,11 @@ ITER_REPORT_TEMPLATE = """
 [sco.] train_cap_acc: {train_cap_acc}
 [sco.] train_ori_acc: {train_ori_acc}
 [sco.] train_obj_acc: {train_obj_acc}
+[sco.] train_sem_acc: {train_sem_acc}
 [sco.] train_pred_ious: {train_pred_ious}
 [sco.] train_pos_ratio: {train_pos_ratio}, train_neg_ratio: {train_neg_ratio}
-[sco.] train_iou_rate_0.25: {train_iou_rate_25}, train_iou_rate_0.5: {train_iou_rate_5}
-[sco.] train_iou_max_rate_0.25: {train_iou_max_rate_25}, train_iou_max_rate_0.5: {train_iou_max_rate_5}
+[sco.] train_iou_0.1: {train_iou_1}, train_iou_0.25: {train_iou_25}, train_iou_0.5: {train_iou_5}
+[sco.] train_iou_max_0.1: {train_iou_max_1}, train_iou_max_0.25: {train_iou_max_25}, train_iou_max_0.5: {train_iou_max_5}
 [info] mean_fetch_time: {mean_fetch_time}s
 [info] mean_forward_time: {mean_forward_time}s
 [info] mean_backward_time: {mean_backward_time}s
@@ -51,13 +54,6 @@ ITER_REPORT_TEMPLATE = """
 
 EPOCH_REPORT_TEMPLATE = """
 ---------------------------------summary---------------------------------
-[train] train_bleu-1: {train_bleu_1}
-[train] train_bleu-2: {train_bleu_2}
-[train] train_bleu-3: {train_bleu_3}
-[train] train_bleu-4: {train_bleu_4}
-[train] train_cider: {train_cider}
-[train] train_rouge: {train_rouge}
-[train] train_meteor: {train_meteor}
 [train] train_loss: {train_loss}
 [train] train_ref_loss: {train_ref_loss}
 [train] train_lang_loss: {train_lang_loss}
@@ -67,16 +63,10 @@ EPOCH_REPORT_TEMPLATE = """
 [train] train_lang_acc: {train_lang_acc}
 [train] train_ref_acc: {train_ref_acc}
 [train] train_obj_acc: {train_obj_acc}
+[train] train_sem_acc: {train_sem_acc}
 [train] train_pos_ratio: {train_pos_ratio}, train_neg_ratio: {train_neg_ratio}
-[train] train_iou_rate_0.25: {train_iou_rate_25}, train_iou_rate_0.5: {train_iou_rate_5}
-[train] train_max_iou_rate_0.25: {train_max_iou_rate_25}, train_max_iou_rate_0.5: {train_max_iou_rate_5}
-[val]   val_bleu-1: {val_bleu_1}
-[val]   val_bleu-2: {val_bleu_2}
-[val]   val_bleu-3: {val_bleu_3}
-[val]   val_bleu-4: {val_bleu_4}
-[val]   val_cider: {val_cider}
-[val]   val_rouge: {val_rouge}
-[val]   val_meteor: {val_meteor}
+[train] train_iou_0.1: {train_iou_1}, train_iou_0.25: {train_iou_25}, train_iou_0.5: {train_iou_5}
+[train] train_max_iou_0.1: {train_max_iou_1}, train_max_iou_0.25: {train_max_iou_25}, train_max_iou_0.5: {train_max_iou_5}
 [val]   val_loss: {val_loss}
 [val]   val_ref_loss: {val_ref_loss}
 [val]   val_lang_loss: {val_lang_loss}
@@ -86,32 +76,20 @@ EPOCH_REPORT_TEMPLATE = """
 [val]   val_lang_acc: {val_lang_acc}
 [val]   val_ref_acc: {val_ref_acc}
 [val]   val_obj_acc: {val_obj_acc}
+[val]   val_sem_acc: {val_sem_acc}
 [val]   val_pos_ratio: {val_pos_ratio}, val_neg_ratio: {val_neg_ratio}
-[val]   val_iou_rate_0.25: {val_iou_rate_25}, val_iou_rate_0.5: {val_iou_rate_5}
-[val]   val_max_iou_rate_0.25: {val_max_iou_rate_25}, val_max_iou_rate_0.5: {val_max_iou_rate_5}
+[val]   val_iou_0.1: {val_iou_1}, val_iou_0.25: {val_iou_25}, val_iou_0.5: {val_iou_5}
+[val]   val_max_iou_0.1: {val_max_iou_1}, val_max_iou_0.25: {val_max_iou_25}, val_max_iou_0.5: {val_max_iou_5}
 """
 
 BEST_REPORT_TEMPLATE = """
 --------------------------------------best--------------------------------------
-[best] epoch: {epoch}
-[best]  bleu-1: {bleu_1}
-[best]  bleu-2: {bleu_2}
-[best]  bleu-3: {bleu_3}
-[best]  bleu-4: {bleu_4}
-[best]  cider: {cider}
-[best]  rouge: {rouge}
-[best]  meteor: {meteor}
-[sco.] ref_acc: {ref_acc}
-[sco.] obj_acc: {obj_acc}
-[sco.] pos_ratio: {pos_ratio}, neg_ratio: {neg_ratio}
-[sco.] iou_rate_0.25: {iou_rate_25}, iou_rate_0.5: {iou_rate_5}
-[best] best_caption_epoch: {best_caption_epoch}
-[best]  best_caption_bleu-4: {best_caption_bleu_4}
-[best]  best_caption_cider: {best_caption_cider}
-[best]  best_caption_rouge: {best_caption_rouge}
-[best]  best_caption_meteor: {best_caption_meteor}
-[sco.] best_ground_epoch: {best_ground_epoch}
-[sco.] best_ground_iou_rate_0.25: {best_ground_iou_rate_25}, best_ground_iou_rate_0.5: {best_ground_iou_rate_5}
+[best]  epoch: {epoch}
+[sco.]  ref_acc: {ref_acc}
+[sco.]  obj_acc: {obj_acc}
+[sco.]  sem_acc: {sem_acc}
+[sco.]  pos_ratio: {pos_ratio}, neg_ratio: {neg_ratio}
+[sco.]  iou_0.1: {iou_1}, iou_0.25: {iou_25}, iou_0.5: {iou_5}
 """
 
 class Solver():
@@ -151,33 +129,18 @@ class Solver():
 
         self.best = {
             "epoch": 0,
-            "best_caption_epoch": 0,
-            "best_ground_epoch": 0,
-            "bleu-1": -float("inf"),
-            "bleu-2": -float("inf"),
-            "bleu-3": -float("inf"),
-            "bleu-4": -float("inf"),
-            "cider": -float("inf"),
-            "rouge": -float("inf"),
-            "meteor": -float("inf"),
-            "best_caption_bleu-4": -float("inf"),
-            "best_caption_cider": -float("inf"),
-            "best_caption_rouge": -float("inf"),
-            "best_caption_meteor": -float("inf"),
             "sum": -float("inf"),
             "ground_sum": -float("inf"),
             "caption_sum": -float("inf"),
             "lang_acc": -float("inf"),
             "ref_acc": -float("inf"),
             "obj_acc": -float("inf"),
+            "sem_acc": -float("inf"),
             "pos_ratio": -float("inf"),
             "neg_ratio": -float("inf"),
-            "iou_rate_0.25": -float("inf"),
-            "iou_rate_0.5": -float("inf"),
-            "best_ground_iou_rate_0.25": -float("inf"),
-            "best_ground_iou_rate_0.5": -float("inf"),
-            "max_iou_rate_0.25": -float("inf"),
-            "max_iou_rate_0.5": -float("inf")
+            "iou_0.1": -float("inf"),
+            "iou_0.25": -float("inf"),
+            "iou_0.5": -float("inf")
         } if checkpoint_best == None else checkpoint_best
 
         # init log
@@ -302,93 +265,85 @@ class Solver():
         print(info_str, flush=True)
 
     def _reset_log(self, phase):
-        if phase == "train":
-            self.log[phase] = {
-                # info
-                "forward": [],
-                "backward": [],
-                "eval": [],
-                "fetch": [],
-                "iter_time": [],
-                "real_time": [],
-                # loss (float, not torch.cuda.FloatTensor)
-                "loss": [],
-                "ref_loss": [],
-                "lang_loss": [],
-                "cap_loss": [],
-                "ori_loss": [],
-                "dist_loss": [],
-                "objectness_loss": [],
-                "vote_loss": [],
-                "box_loss": [],
-                # scores (float, not torch.cuda.FloatTensor)
-                "lang_acc": [],
-                "ref_acc": [],
-                "cap_acc": [],
-                "ori_acc": [],
-                "obj_acc": [],
-                "pred_ious": [],
-                "pos_ratio": [],
-                "neg_ratio": [],
-                "iou_rate_0.25": [],
-                "iou_rate_0.5": [],
-                "max_iou_rate_0.25": [],
-                "max_iou_rate_0.5": [],
-                # for eval
-                "bleu-1": [],
-                "bleu-2": [],
-                "bleu-3": [],
-                "bleu-4": [],
-                "cider": [],
-                "rouge": [],
-                "meteor": []
-            }
-        else:
-            self.log[phase] = {
-                "bleu-1": [],
-                "bleu-2": [],
-                "bleu-3": [],
-                "bleu-4": [],
-                "cider": [],
-                "rouge": [],
-                "meteor": [],
-                # info
-                "forward": [],
-                "backward": [],
-                "eval": [],
-                "fetch": [],
-                "iter_time": [],
-                "real_time": [],
-                # loss (float, not torch.cuda.FloatTensor)
-                "loss": [],
-                "ref_loss": [],
-                "lang_loss": [],
-                "cap_loss": [],
-                "ori_loss": [],
-                "dist_loss": [],
-                "objectness_loss": [],
-                "vote_loss": [],
-                "box_loss": [],
-                # scores (float, not torch.cuda.FloatTensor)
-                "lang_acc": [],
-                "ref_acc": [],
-                "cap_acc": [],
-                "ori_acc": [],
-                "obj_acc": [],
-                "pred_ious": [],
-                "pos_ratio": [],
-                "neg_ratio": [],
-                "iou_rate_0.25": [],
-                "iou_rate_0.5": [],
-                "max_iou_rate_0.25": [],
-                "max_iou_rate_0.5": []
-            }
+        self.log[phase] = defaultdict(list)
+        # if phase == "train":
+        #     self.log[phase] = {
+        #         # info
+        #         "forward": [],
+        #         "backward": [],
+        #         "eval": [],
+        #         "fetch": [],
+        #         "iter_time": [],
+        #         "real_time": [],
+        #         # loss (float, not torch.cuda.FloatTensor)
+        #         "loss": [],
+        #         "ref_loss": [],
+        #         "lang_loss": [],
+        #         "cap_loss": [],
+        #         "ori_loss": [],
+        #         "dist_loss": [],
+        #         "objectness_loss": [],
+        #         "vote_loss": [],
+        #         "box_loss": [],
+        #         # scores (float, not torch.cuda.FloatTensor)
+        #         "lang_acc": [],
+        #         "ref_acc": [],
+        #         "cap_acc": [],
+        #         "ori_acc": [],
+        #         "obj_acc": [],
+        #         "sem_acc": [],
+        #         "pred_ious": [],
+        #         "pos_ratio": [],
+        #         "neg_ratio": [],
+        #         "iou_0.1": [],
+        #         "iou_0.25": [],
+        #         "iou_0.5": [],
+        #         "max_iou_0.1": [],
+        #         "max_iou_0.25": [],
+        #         "max_iou_0.5": [],
+        #     }
+        # else:
+        #     self.log[phase] = {
+        #         # info
+        #         "forward": [],
+        #         "backward": [],
+        #         "eval": [],
+        #         "fetch": [],
+        #         "iter_time": [],
+        #         "real_time": [],
+        #         # loss (float, not torch.cuda.FloatTensor)
+        #         "loss": [],
+        #         "ref_loss": [],
+        #         "lang_loss": [],
+        #         "cap_loss": [],
+        #         "ori_loss": [],
+        #         "dist_loss": [],
+        #         "objectness_loss": [],
+        #         "vote_loss": [],
+        #         "box_loss": [],
+        #         # scores (float, not torch.cuda.FloatTensor)
+        #         "lang_acc": [],
+        #         "ref_acc": [],
+        #         "cap_acc": [],
+        #         "ori_acc": [],
+        #         "obj_acc": [],
+        #         "sem_acc": [],
+        #         "pred_ious": [],
+        #         "pos_ratio": [],
+        #         "neg_ratio": [],
+        #         "iou_0.1": [],
+        #         "iou_0.25": [],
+        #         "iou_0.5": [],
+        #         "max_iou_0.1": [],
+        #         "max_iou_0.25": [],
+        #         "max_iou_0.5": []
+        #     }
 
     def _dump_log(self, phase, is_eval=False):
         if phase == "train" and not is_eval:
             log = {
                 "loss": ["loss", "ref_loss", "lang_loss", "cap_loss", "ori_loss", "dist_loss", "objectness_loss", "vote_loss", "box_loss"],
-                "score": ["lang_acc", "ref_acc", "cap_acc", "ori_acc", "obj_acc", "pred_ious", "pos_ratio", "neg_ratio", "iou_rate_0.25", "iou_rate_0.5", "max_iou_rate_0.25", "max_iou_rate_0.5"]
+                "score": ["lang_acc", "ref_acc", "cap_acc", "ori_acc", "obj_acc", "sem_acc", "pred_ious", "pos_ratio", "neg_ratio", "iou_0.1", "iou_0.25", "iou_0.5", "max_iou_0.1", "max_iou_0.25", "max_iou_0.5"]
             }
             for key in log:
                 for item in log[key]:
@@ -401,17 +356,9 @@ class Solver():
 
         # eval
         if is_eval:
-            log = ["bleu-1", "bleu-2", "bleu-3", "bleu-4", "cider", "rouge", "meteor"]
-            for key in log:
-                if self.log[phase][key]:
-                    self._log_writer[phase].add_scalar(
-                        "eval/{}".format(key),
-                        self.log[phase][key],
-                        self._global_iter_id
-                    )
             ground_log = {
-                "score": ["lang_acc", "ref_acc", "obj_acc", "pos_ratio", "neg_ratio", "iou_rate_0.25", "iou_rate_0.5",
-                          "max_iou_rate_0.25", "max_iou_rate_0.5"]
+                "score": ["lang_acc", "ref_acc", "obj_acc", "pos_ratio", "neg_ratio", "sem_acc", "iou_0.1",
+                          "iou_0.25", "iou_0.5", "max_iou_0.1", "max_iou_0.25", "max_iou_0.5"]
             }
             for key in ground_log:
                 for item in ground_log[key]:
@@ -420,6 +367,8 @@ class Solver():
                         np.mean([v for v in self.log[phase][item]]),
                         self._global_iter_id
                     )
+        # print(np.mean(self.log["val"]["iou_0.1"]), np.mean(self.log["val"]["iou_0.25"]), np.mean(self.log["val"]["iou_0.5"]))
+        # print(np.mean(self.log["val"]["sem_acc"]))
 
     def _set_phase(self, phase):
         if phase == "train":
@@ -473,8 +422,8 @@ class Solver():
         #self._running_log["obj_acc"] = data_dict["obj_acc"].item()
         #self._running_log["pos_ratio"] = data_dict["pos_ratio"].item()
         #self._running_log["neg_ratio"] = data_dict["neg_ratio"].item()
-        #self._running_log["max_iou_rate_0.25"] = np.mean(data_dict["max_iou_rate_0.25"])
-        #self._running_log["max_iou_rate_0.5"] = np.mean(data_dict["max_iou_rate_0.5"])
+        #self._running_log["max_iou_0.25"] = np.mean(data_dict["max_iou_0.25"])
+        #self._running_log["max_iou_0.5"] = np.mean(data_dict["max_iou_0.5"])
 
 
     def _ground_eval(self, data_dict, phase, is_eval):
@@ -489,13 +438,17 @@ class Solver():
             self._running_log["lang_acc"] = data_dict["lang_acc"].item()
             self._running_log["ref_acc"] = np.mean(data_dict["ref_acc"])
             self._running_log["obj_acc"] = data_dict["obj_acc"].item()
+            self._running_log["sem_acc"] = data_dict["sem_acc"].item()
             self._running_log["pos_ratio"] = data_dict["pos_ratio"].item()
             self._running_log["neg_ratio"] = data_dict["neg_ratio"].item()
-            self._running_log["iou_rate_0.25"] = np.mean(data_dict["ref_iou_rate_0.25"])
-            self._running_log["iou_rate_0.5"] = np.mean(data_dict["ref_iou_rate_0.5"])
-            self._running_log["max_iou_rate_0.25"] = np.mean(data_dict["max_iou_rate_0.25"])
-            self._running_log["max_iou_rate_0.5"] = np.mean(data_dict["max_iou_rate_0.5"])
+            self._running_log["iou_0.25"] = np.mean(data_dict["ref_iou_0.25"])
+            self._running_log["iou_0.5"] = np.mean(data_dict["ref_iou_0.5"])
+            self._running_log["iou_0.1"] = np.mean(data_dict["ref_iou_0.1"])
+            self._running_log["max_iou_0.1"] = np.mean(data_dict["max_iou_0.1"])
+            self._running_log["max_iou_0.25"] = np.mean(data_dict["max_iou_0.25"])
+            self._running_log["max_iou_0.5"] = np.mean(data_dict["max_iou_0.5"])
         elif phase == "val" and is_eval == True:
+            print(phase, is_eval)
             data_dict = eval_ground(
                 data_dict=data_dict,
                 config=self.config,
@@ -506,54 +459,37 @@ class Solver():
             self._running_log["lang_acc"] = data_dict["lang_acc"].item()
             self._running_log["ref_acc"] = np.mean(data_dict["ref_acc"])
             self._running_log["obj_acc"] = data_dict["obj_acc"].item()
+            self._running_log["sem_acc"] = data_dict["sem_acc"].item()
             self._running_log["pos_ratio"] = data_dict["pos_ratio"].item()
             self._running_log["neg_ratio"] = data_dict["neg_ratio"].item()
-            self._running_log["iou_rate_0.25"] = np.mean(data_dict["ref_iou_rate_0.25"])
-            self._running_log["iou_rate_0.5"] = np.mean(data_dict["ref_iou_rate_0.5"])
-            self._running_log["max_iou_rate_0.25"] = np.mean(data_dict["max_iou_rate_0.25"])
-            self._running_log["max_iou_rate_0.5"] = np.mean(data_dict["max_iou_rate_0.5"])
+            self._running_log["iou_0.25"] = np.mean(data_dict["ref_iou_0.25"])
+            self._running_log["iou_0.5"] = np.mean(data_dict["ref_iou_0.5"])
+            self._running_log["iou_0.1"] = np.mean(data_dict["ref_iou_0.1"])
+            self._running_log["max_iou_0.1"] = np.mean(data_dict["max_iou_0.1"])
+            self._running_log["max_iou_0.25"] = np.mean(data_dict["max_iou_0.25"])
+            self._running_log["max_iou_0.5"] = np.mean(data_dict["max_iou_0.5"])
         else:
             self._running_log["lang_acc"] = 0
             self._running_log["ref_acc"] = 0
             self._running_log["obj_acc"] = 0
+            self._running_log["sem_acc"] = 0
             self._running_log["pos_ratio"] = 0
             self._running_log["neg_ratio"] = 0
-            self._running_log["iou_rate_0.25"] = 0
-            self._running_log["iou_rate_0.5"] = 0
-            self._running_log["max_iou_rate_0.25"] = 0
-            self._running_log["max_iou_rate_0.5"] = 0
+            self._running_log["iou_0.1"] = 0
+            self._running_log["iou_0.25"] = 0
+            self._running_log["iou_0.5"] = 0
+            self._running_log["max_iou_0.1"] = 0
+            self._running_log["max_iou_0.25"] = 0
+            self._running_log["max_iou_0.5"] = 0
 
-    def _eval(self, phase, epoch):
-        if self.caption and phase != "train" and epoch >= self.num_ground_epoch:
-            bleu, cider, rouge, meteor = eval_cap(
-                model=self.model,
-                device=self.device,
-                dataset=self.dataset["eval"]["val_scene"],
-                dataloader=self.dataloader["eval"]["val_scene"],
-                phase=phase,
-                folder=self.stamp,
-                use_tf=False,
-                max_len=CONF.TRAIN.MAX_DES_LEN,
-                force=True,
-                min_iou=CONF.EVAL.MIN_IOU_THRESHOLD
-            )
-
-            # dump
-            self.log[phase]["bleu-1"] = bleu[0][0]
-            self.log[phase]["bleu-2"] = bleu[0][1]
-            self.log[phase]["bleu-3"] = bleu[0][2]
-            self.log[phase]["bleu-4"] = bleu[0][3]
-            self.log[phase]["cider"] = cider[0]
-            self.log[phase]["rouge"] = rouge[0]
-            self.log[phase]["meteor"] = meteor[0]
-        else:
-            self.log[phase]["bleu-1"] = 0
-            self.log[phase]["bleu-2"] = 0
-            self.log[phase]["bleu-3"] = 0
-            self.log[phase]["bleu-4"] = 0
-            self.log[phase]["cider"] = 0
-            self.log[phase]["rouge"] = 0
-            self.log[phase]["meteor"] = 0
+    # def _eval(self, phase, epoch):
+    #     self.log[phase]["bleu-1"] = 0
+    #     self.log[phase]["bleu-2"] = 0
+    #     self.log[phase]["bleu-3"] = 0
+    #     self.log[phase]["bleu-4"] = 0
+    #     self.log[phase]["cider"] = 0
+    #     self.log[phase]["rouge"] = 0
+    #     self.log[phase]["meteor"] = 0
 
     def _feed(self, dataloader, phase, epoch_id, is_eval=False):
         # switch mode
@@ -603,29 +539,32 @@ class Solver():
 
                 # initialize the running loss
                 self._running_log = {
-                    # loss
-                    "loss": 0,
-                    "ref_loss": 0,
-                    "lang_loss": 0,
-                    "cap_loss": 0,
-                    "ori_loss": 0,
-                    "dist_loss": 0,
-                    "objectness_loss": 0,
-                    "vote_loss": 0,
-                    "box_loss": 0,
-                    # acc
-                    "lang_acc": 0,
-                    "ref_acc": 0,
-                    "cap_acc": 0,
-                    "ori_acc": 0,
-                    "obj_acc": 0,
-                    "pred_ious": 0,
-                    "pos_ratio": 0,
-                    "neg_ratio": 0,
-                    "iou_rate_0.25": 0,
-                    "iou_rate_0.5": 0,
-                    "max_iou_rate_0.25": 0,
-                    "max_iou_rate_0.5": 0
+                    # # loss
+                    # "loss": 0,
+                    # "ref_loss": 0,
+                    # "lang_loss": 0,
+                    # "cap_loss": 0,
+                    # "ori_loss": 0,
+                    # "dist_loss": 0,
+                    # "objectness_loss": 0,
+                    # "vote_loss": 0,
+                    # "box_loss": 0,
+                    # # acc
+                    # "sem_acc": 0,
+                    # "lang_acc": 0,
+                    # "ref_acc": 0,
+                    # "cap_acc": 0,
+                    # "ori_acc": 0,
+                    # "obj_acc": 0,
+                    # "pred_ious": 0,
+                    # "pos_ratio": 0,
+                    # "neg_ratio": 0,
+                    # "iou_0.1": 0,
+                    # "iou_0.25": 0,
+                    # "iou_0.5": 0,
+                    # "max_iou_0.1": 0,
+                    # "max_iou_0.25": 0,
+                    # "max_iou_0.5": 0
                 }
 
                 # load
@@ -633,12 +572,20 @@ class Solver():
 
                 # with torch.autograd.set_detect_anomaly(True):
                 # forward
+                # print("evaluating on val...")
+                # self._feed(self.dataloader["eval"]["val"], "val", epoch_id, is_eval=True)
+                # self._dump_log("val", True)
+                #
+                # sys.exit()
+
                 data_dict["epoch"] = epoch_id
                 start = time.time()
                 data_dict = self._forward(data_dict)
-                self._compute_loss(data_dict)
-                self.log[phase]["forward"].append(time.time() - start)
 
+                self._compute_loss(data_dict)
+
+
+                self.log[phase]["forward"].append(time.time() - start)
                 # backward
                 if phase == "train" and not is_eval:
                     start = time.time()
@@ -662,6 +609,7 @@ class Solver():
                 self.log[phase]["vote_loss"].append(self._running_log["vote_loss"].item())
                 self.log[phase]["box_loss"].append(self._running_log["box_loss"].item())
 
+                self.log[phase]["sem_acc"].append(self._running_log["sem_acc"])
                 self.log[phase]["lang_acc"].append(self._running_log["lang_acc"])
                 self.log[phase]["ref_acc"].append(self._running_log["ref_acc"])
                 self.log[phase]["cap_acc"].append(self._running_log["cap_acc"])
@@ -670,10 +618,12 @@ class Solver():
                 self.log[phase]["pred_ious"].append(self._running_log["pred_ious"])
                 self.log[phase]["pos_ratio"].append(self._running_log["pos_ratio"])
                 self.log[phase]["neg_ratio"].append(self._running_log["neg_ratio"])
-                self.log[phase]["iou_rate_0.25"].append(self._running_log["iou_rate_0.25"])
-                self.log[phase]["iou_rate_0.5"].append(self._running_log["iou_rate_0.5"])
-                self.log[phase]["max_iou_rate_0.25"].append(self._running_log["max_iou_rate_0.25"])
-                self.log[phase]["max_iou_rate_0.5"].append(self._running_log["max_iou_rate_0.5"])
+                self.log[phase]["iou_0.1"].append(self._running_log["iou_0.1"])
+                self.log[phase]["iou_0.25"].append(self._running_log["iou_0.25"])
+                self.log[phase]["iou_0.5"].append(self._running_log["iou_0.5"])
+                self.log[phase]["max_iou_0.1"].append(self._running_log["max_iou_0.1"])
+                self.log[phase]["max_iou_0.25"].append(self._running_log["max_iou_0.25"])
+                self.log[phase]["max_iou_0.5"].append(self._running_log["max_iou_0.5"])
 
                 # report
                 if phase == "train" and not is_eval:
@@ -714,7 +664,7 @@ class Solver():
                     self._global_iter_id += 1
         else:
         #if is_eval:
-            self._eval(phase, epoch_id)
+            # self._eval(phase, epoch_id)
             if phase == "val":
                 for data_dict in dataloader:
                     # move to cuda
@@ -724,23 +674,25 @@ class Solver():
 
                     # initialize the running loss
                     self._running_log = {
-                        # loss
-                        "loss": 0,
-                        "ref_loss": 0,
-                        "lang_loss": 0,
-                        "objectness_loss": 0,
-                        "vote_loss": 0,
-                        "box_loss": 0,
-                        # acc
-                        "lang_acc": 0,
-                        "ref_acc": 0,
-                        "obj_acc": 0,
-                        "pos_ratio": 0,
-                        "neg_ratio": 0,
-                        "iou_rate_0.25": 0,
-                        "iou_rate_0.5": 0,
-                        "max_iou_rate_0.25": 0,
-                        "max_iou_rate_0.5": 0
+                        # # loss
+                        # "loss": 0,
+                        # "ref_loss": 0,
+                        # "lang_loss": 0,
+                        # "objectness_loss": 0,
+                        # "vote_loss": 0,
+                        # "box_loss": 0,
+                        # # acc
+                        # "lang_acc": 0,
+                        # "ref_acc": 0,
+                        # "obj_acc": 0,
+                        # "sem_acc": 0,
+                        # "pos_ratio": 0,
+                        # "neg_ratio": 0,
+                        # "iou_0.1": 0,
+                        # "iou_0.25": 0,
+                        # "iou_0.5": 0,
+                        # "max_iou_0.25": 0,
+                        # "max_iou_0.5": 0
                     }
 
                     data_dict["epoch"] = epoch_id
@@ -758,25 +710,23 @@ class Solver():
                         self.log[phase]["objectness_loss"].append(self._running_log["objectness_loss"].item())
                         self.log[phase]["vote_loss"].append(self._running_log["vote_loss"].item())
                         self.log[phase]["box_loss"].append(self._running_log["box_loss"].item())
-
                         self.log[phase]["lang_acc"].append(self._running_log["lang_acc"])
                         self.log[phase]["ref_acc"].append(self._running_log["ref_acc"])
                         self.log[phase]["obj_acc"].append(self._running_log["obj_acc"])
+                        self.log[phase]["sem_acc"].append(self._running_log["sem_acc"])
                         self.log[phase]["pos_ratio"].append(self._running_log["pos_ratio"])
                         self.log[phase]["neg_ratio"].append(self._running_log["neg_ratio"])
-                        self.log[phase]["iou_rate_0.25"].append(self._running_log["iou_rate_0.25"])
-                        self.log[phase]["iou_rate_0.5"].append(self._running_log["iou_rate_0.5"])
-                        self.log[phase]["max_iou_rate_0.25"].append(self._running_log["max_iou_rate_0.25"])
-                        self.log[phase]["max_iou_rate_0.5"].append(self._running_log["max_iou_rate_0.5"])
+                        self.log[phase]["iou_0.1"].append(self._running_log["iou_0.1"])
+                        self.log[phase]["iou_0.25"].append(self._running_log["iou_0.25"])
+                        self.log[phase]["iou_0.5"].append(self._running_log["iou_0.5"])
+                        self.log[phase]["max_iou_0.1"].append(self._running_log["max_iou_0.1"])
+                        self.log[phase]["max_iou_0.25"].append(self._running_log["max_iou_0.25"])
+                        self.log[phase]["max_iou_0.5"].append(self._running_log["max_iou_0.5"])
 
             cur_criterion = self.criterion
             if phase == "val" and cur_criterion == "sum":
-                #metrics = ["bleu-1", "bleu-2", "bleu-3", "bleu-4", "cider", "rouge", "meteor"]
-                metrics = ["bleu-4", "cider", "rouge", "meteor"]
-                caption_cur_best = np.sum([np.mean(self.log[phase][m]) for m in metrics])
-                ground_metrics = ["iou_rate_0.25", "iou_rate_0.5"]
-                ground_cur_best = np.sum([np.mean(self.log[phase][m]) for m in ground_metrics])
-                cur_best = caption_cur_best + ground_cur_best * 2
+                ground_metrics = ["iou_0.1", "iou_0.25", "iou_0.5"]
+                cur_best = np.sum([np.mean(self.log[phase][m]) for m in ground_metrics])
             else:
                 #cur_best = np.mean(self.log[phase][cur_criterion])
                 caption_cur_best = 0.
@@ -787,53 +737,20 @@ class Solver():
                 self._log("best {} achieved: {}".format(cur_criterion, cur_best))
 
                 self.best["epoch"] = epoch_id + 1
-                self.best["bleu-1"] = self.log[phase]["bleu-1"]
-                self.best["bleu-2"] = self.log[phase]["bleu-2"]
-                self.best["bleu-3"] = self.log[phase]["bleu-3"]
-                self.best["bleu-4"] = self.log[phase]["bleu-4"]
-                self.best["cider"] = self.log[phase]["cider"]
-                self.best["rouge"] = self.log[phase]["rouge"]
-                self.best["meteor"] = self.log[phase]["meteor"]
+                self.best["sem_acc"] = np.mean(self.log[phase]["sem_acc"])
                 self.best["ref_acc"] = np.mean(self.log[phase]["ref_acc"])
                 self.best["obj_acc"] = np.mean(self.log[phase]["obj_acc"])
                 self.best["pos_ratio"] = np.mean(self.log[phase]["pos_ratio"])
                 self.best["neg_ratio"] = np.mean(self.log[phase]["neg_ratio"])
-                self.best["iou_rate_0.25"] = np.mean(self.log[phase]["iou_rate_0.25"])
-                self.best["iou_rate_0.5"] = np.mean(self.log[phase]["iou_rate_0.5"])
+                self.best["iou_0.1"] = np.mean(self.log[phase]["iou_0.1"])
+                self.best["iou_0.25"] = np.mean(self.log[phase]["iou_0.25"])
+                self.best["iou_0.5"] = np.mean(self.log[phase]["iou_0.5"])
                 self.best["sum"] = cur_best
 
                 # save model
                 self._log("saving best models...\n")
                 model_root = os.path.join(CONF.PATH.OUTPUT, self.stamp)
                 torch.save(self.model.state_dict(), os.path.join(model_root, "model.pth"))
-
-            if phase == "val" and caption_cur_best > self.best["caption_sum"]:
-                self._log("best caption {} achieved: {}".format(cur_criterion, caption_cur_best))
-
-                self.best["best_caption_epoch"] = epoch_id + 1
-                self.best["best_caption_bleu-4"] = self.log[phase]["bleu-4"]
-                self.best["best_caption_cider"] = self.log[phase]["cider"]
-                self.best["best_caption_rouge"] = self.log[phase]["rouge"]
-                self.best["best_caption_meteor"] = self.log[phase]["meteor"]
-                self.best["caption_sum"] = caption_cur_best
-
-                # save model
-                self._log("saving best caption models...\n")
-                model_root = os.path.join(CONF.PATH.OUTPUT, self.stamp)
-                torch.save(self.model.state_dict(), os.path.join(model_root, "caption_model.pth"))
-
-            if phase == "val" and ground_cur_best > self.best["ground_sum"]:
-                self._log("best ground {} achieved: {}".format(cur_criterion, ground_cur_best))
-
-                self.best["best_ground_epoch"] = epoch_id + 1
-                self.best["best_ground_iou_rate_0.25"] = np.mean(self.log[phase]["iou_rate_0.25"])
-                self.best["best_ground_iou_rate_0.5"] = np.mean(self.log[phase]["iou_rate_0.5"])
-                self.best["ground_sum"] = ground_cur_best
-
-                # save model
-                self._log("saving best ground models...\n")
-                model_root = os.path.join(CONF.PATH.OUTPUT, self.stamp)
-                torch.save(self.model.state_dict(), os.path.join(model_root, "ground_model.pth"))
 
     def _finish(self, epoch_id):
         # print best
@@ -900,10 +817,13 @@ class Solver():
             train_cap_acc=round(np.mean([v for v in self.log["train"]["cap_acc"]]), 5),
             train_ori_acc=round(np.mean([v for v in self.log["train"]["ori_acc"]]), 5),
             train_obj_acc=round(np.mean([v for v in self.log["train"]["obj_acc"]]), 5),
-            train_iou_rate_25=round(np.mean([v for v in self.log["train"]["iou_rate_0.25"]]), 5),
-            train_iou_rate_5=round(np.mean([v for v in self.log["train"]["iou_rate_0.5"]]), 5),
-            train_iou_max_rate_25=round(np.mean([v for v in self.log["train"]["max_iou_rate_0.25"]]), 5),
-            train_iou_max_rate_5=round(np.mean([v for v in self.log["train"]["max_iou_rate_0.5"]]), 5),
+            train_sem_acc=round(np.mean([v for v in self.log["train"]["sem_acc"]]), 5),
+            train_iou_1=round(np.mean([v for v in self.log["train"]["iou_0.1"]]), 5),
+            train_iou_25=round(np.mean([v for v in self.log["train"]["iou_0.25"]]), 5),
+            train_iou_5=round(np.mean([v for v in self.log["train"]["iou_0.5"]]), 5),
+            train_iou_max_1=round(np.mean([v for v in self.log["train"]["max_iou_0.1"]]), 5),
+            train_iou_max_25=round(np.mean([v for v in self.log["train"]["max_iou_0.25"]]), 5),
+            train_iou_max_5=round(np.mean([v for v in self.log["train"]["max_iou_0.5"]]), 5),
             train_pos_ratio=round(np.mean([v for v in self.log["train"]["pos_ratio"]]), 5),
             train_neg_ratio=round(np.mean([v for v in self.log["train"]["neg_ratio"]]), 5),
             train_pred_ious=round(np.mean([v for v in self.log["train"]["pred_ious"]]), 5),
@@ -923,13 +843,13 @@ class Solver():
         self._log("epoch [{}/{}] done...".format(epoch_id+1, self.epoch))
         self._log_eval("epoch [{}/{}] done...".format(epoch_id + 1, self.epoch))
         epoch_report = self.__epoch_report_template.format(
-            train_bleu_1=round(self.log["train"]["bleu-1"], 5),
-            train_bleu_2=round(self.log["train"]["bleu-2"], 5),
-            train_bleu_3=round(self.log["train"]["bleu-3"], 5),
-            train_bleu_4=round(self.log["train"]["bleu-4"], 5),
-            train_cider=round(self.log["train"]["cider"], 5),
-            train_rouge=round(self.log["train"]["rouge"], 5),
-            train_meteor=round(self.log["train"]["meteor"], 5),
+            # train_bleu_1=round(self.log["train"]["bleu-1"], 5),
+            # train_bleu_2=round(self.log["train"]["bleu-2"], 5),
+            # train_bleu_3=round(self.log["train"]["bleu-3"], 5),
+            # train_bleu_4=round(self.log["train"]["bleu-4"], 5),
+            # train_cider=round(self.log["train"]["cider"], 5),
+            # train_rouge=round(self.log["train"]["rouge"], 5),
+            # train_meteor=round(self.log["train"]["meteor"], 5),
             train_loss=round(np.mean([v for v in self.log["train"]["loss"]]), 5),
             train_ref_loss=round(np.mean([v for v in self.log["train"]["ref_loss"]]), 5),
             train_lang_loss=round(np.mean([v for v in self.log["train"]["lang_loss"]]), 5),
@@ -939,19 +859,22 @@ class Solver():
             train_lang_acc=round(np.mean([v for v in self.log["train"]["lang_acc"]]), 5),
             train_ref_acc=round(np.mean([v for v in self.log["train"]["ref_acc"]]), 5),
             train_obj_acc=round(np.mean([v for v in self.log["train"]["obj_acc"]]), 5),
+            train_sem_acc=round(np.mean([v for v in self.log["train"]["sem_acc"]]), 5),
             train_pos_ratio=round(np.mean([v for v in self.log["train"]["pos_ratio"]]), 5),
             train_neg_ratio=round(np.mean([v for v in self.log["train"]["neg_ratio"]]), 5),
-            train_iou_rate_25=round(np.mean([v for v in self.log["train"]["iou_rate_0.25"]]), 5),
-            train_iou_rate_5=round(np.mean([v for v in self.log["train"]["iou_rate_0.5"]]), 5),
-            train_max_iou_rate_25=round(np.mean([v for v in self.log["train"]["max_iou_rate_0.25"]]), 5),
-            train_max_iou_rate_5=round(np.mean([v for v in self.log["train"]["max_iou_rate_0.5"]]), 5),
-            val_bleu_1=round(self.log["val"]["bleu-1"], 5),
-            val_bleu_2=round(self.log["val"]["bleu-2"], 5),
-            val_bleu_3=round(self.log["val"]["bleu-3"], 5),
-            val_bleu_4=round(self.log["val"]["bleu-4"], 5),
-            val_cider=round(self.log["val"]["cider"], 5),
-            val_rouge=round(self.log["val"]["rouge"], 5),
-            val_meteor=round(self.log["val"]["meteor"], 5),
+            train_iou_1=round(np.mean([v for v in self.log["train"]["iou_0.1"]]), 5),
+            train_iou_25=round(np.mean([v for v in self.log["train"]["iou_0.25"]]), 5),
+            train_iou_5=round(np.mean([v for v in self.log["train"]["iou_0.5"]]), 5),
+            train_max_iou_1=round(np.mean([v for v in self.log["train"]["max_iou_0.1"]]), 5),
+            train_max_iou_25=round(np.mean([v for v in self.log["train"]["max_iou_0.25"]]), 5),
+            train_max_iou_5=round(np.mean([v for v in self.log["train"]["max_iou_0.5"]]), 5),
+            # val_bleu_1=round(self.log["val"]["bleu-1"], 5),
+            # val_bleu_2=round(self.log["val"]["bleu-2"], 5),
+            # val_bleu_3=round(self.log["val"]["bleu-3"], 5),
+            # val_bleu_4=round(self.log["val"]["bleu-4"], 5),
+            # val_cider=round(self.log["val"]["cider"], 5),
+            # val_rouge=round(self.log["val"]["rouge"], 5),
+            # val_meteor=round(self.log["val"]["meteor"], 5),
             val_loss=round(np.mean([v for v in self.log["val"]["loss"]]), 5),
             val_ref_loss=round(np.mean([v for v in self.log["val"]["ref_loss"]]), 5),
             val_lang_loss=round(np.mean([v for v in self.log["val"]["lang_loss"]]), 5),
@@ -961,12 +884,15 @@ class Solver():
             val_lang_acc=round(np.mean([v for v in self.log["val"]["lang_acc"]]), 5),
             val_ref_acc=round(np.mean([v for v in self.log["val"]["ref_acc"]]), 5),
             val_obj_acc=round(np.mean([v for v in self.log["val"]["obj_acc"]]), 5),
+            val_sem_acc=round(np.mean([v for v in self.log["val"]["sem_acc"]]), 5),
             val_pos_ratio=round(np.mean([v for v in self.log["val"]["pos_ratio"]]), 5),
             val_neg_ratio=round(np.mean([v for v in self.log["val"]["neg_ratio"]]), 5),
-            val_iou_rate_25=round(np.mean([v for v in self.log["val"]["iou_rate_0.25"]]), 5),
-            val_iou_rate_5=round(np.mean([v for v in self.log["val"]["iou_rate_0.5"]]), 5),
-            val_max_iou_rate_25=round(np.mean([v for v in self.log["val"]["max_iou_rate_0.25"]]), 5),
-            val_max_iou_rate_5=round(np.mean([v for v in self.log["val"]["max_iou_rate_0.5"]]), 5),
+            val_iou_1=round(np.mean([v for v in self.log["val"]["iou_0.1"]]), 5),
+            val_iou_25=round(np.mean([v for v in self.log["val"]["iou_0.25"]]), 5),
+            val_iou_5=round(np.mean([v for v in self.log["val"]["iou_0.5"]]), 5),
+            val_max_iou_1=round(np.mean([v for v in self.log["val"]["max_iou_0.1"]]), 5),
+            val_max_iou_25=round(np.mean([v for v in self.log["val"]["max_iou_0.25"]]), 5),
+            val_max_iou_5=round(np.mean([v for v in self.log["val"]["max_iou_0.5"]]), 5),
         )
         self._log(epoch_report)
         self._log_eval(epoch_report)
@@ -975,27 +901,14 @@ class Solver():
         self._log("training completed...")
         best_report = self.__best_report_template.format(
             epoch=self.best["epoch"],
-            bleu_1=round(self.best["bleu-1"], 5),
-            bleu_2=round(self.best["bleu-2"], 5),
-            bleu_3=round(self.best["bleu-3"], 5),
-            bleu_4=round(self.best["bleu-4"], 5),
-            cider=round(self.best["cider"], 5),
-            rouge=round(self.best["rouge"], 5),
-            meteor=round(self.best["meteor"], 5),
             ref_acc=round(self.best["ref_acc"], 5),
             obj_acc=round(self.best["obj_acc"], 5),
+            sem_acc=round(self.best["sem_acc"], 5),
             pos_ratio=round(self.best["pos_ratio"], 5),
             neg_ratio=round(self.best["neg_ratio"], 5),
-            iou_rate_25=round(self.best["iou_rate_0.25"], 5),
-            iou_rate_5=round(self.best["iou_rate_0.5"], 5),
-            best_caption_epoch=self.best["best_caption_epoch"],
-            best_caption_bleu_4=round(self.best["best_caption_bleu-4"], 5),
-            best_caption_cider=round(self.best["best_caption_cider"], 5),
-            best_caption_rouge=round(self.best["best_caption_rouge"], 5),
-            best_caption_meteor=round(self.best["best_caption_meteor"], 5),
-            best_ground_epoch=self.best["best_ground_epoch"],
-            best_ground_iou_rate_25=round(self.best["best_ground_iou_rate_0.25"], 5),
-            best_ground_iou_rate_5=round(self.best["best_ground_iou_rate_0.5"], 5),
+            iou_1=round(self.best["iou_0.1"], 5),
+            iou_25=round(self.best["iou_0.25"], 5),
+            iou_5=round(self.best["iou_0.5"], 5),
         )
         self._log(best_report)
         with open(os.path.join(CONF.PATH.OUTPUT, self.stamp, "best.txt"), "w") as f:

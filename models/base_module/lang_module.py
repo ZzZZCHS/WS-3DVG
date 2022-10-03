@@ -43,7 +43,6 @@ class LangModule(nn.Module):
         """
         encode the input descriptions
         """
-
         word_embs = data_dict["ground_lang_feat_list"]  # B * 32 * MAX_DES_LEN * LEN(300)
         lang_len = data_dict["ground_lang_len_list"]
         #word_embs = data_dict["lang_feat_list"]  # B * 32 * MAX_DES_LEN * LEN(300)
@@ -60,7 +59,7 @@ class LangModule(nn.Module):
         # masking
         if data_dict["istrain"][0] == 1 and random.random() < 0.5:
             for i in range(word_embs.shape[0]):
-                word_embs[i, first_obj] = data_dict["unk"][0]
+                word_embs[i, first_obj[i]] = data_dict["unk"][0]
                 len = lang_len[i]
                 for j in range(int(len/5)):
                     num = random.randint(0, len-1)
@@ -71,20 +70,6 @@ class LangModule(nn.Module):
                 for j in range(int(len/5)):
                     num = random.randint(0, len-1)
                     word_embs[i, num] = data_dict["unk"][0]
-
-        # Reverse; Useless; You Could Remove It
-        if max_des_len > 100:
-            main_lang_len = data_dict["ground_main_lang_len_list"]
-            #main_lang_len = data_dict["main_lang_len_list"]
-            main_lang_len = main_lang_len.reshape(batch_size * len_nun_max)
-
-            if data_dict["istrain"][0] == 1 and random.random() < 0.5:
-                for i in range(word_embs.shape[0]):
-                    new_word_emb = copy.deepcopy(word_embs[i])
-                    new_len = lang_len[i] - main_lang_len[i]
-                    new_word_emb[:new_len] = word_embs[i, main_lang_len[i]:lang_len[i]]
-                    new_word_emb[new_len:lang_len[i]] = word_embs[i, :main_lang_len[i]]
-                    word_embs[i] = new_word_emb
 
         # lang_feat = pack_padded_sequence(word_embs, lang_len, batch_first=True, enforce_sorted=False)
         lang_feat = pack_padded_sequence(word_embs, lang_len.cpu(), batch_first=True, enforce_sorted=False)
