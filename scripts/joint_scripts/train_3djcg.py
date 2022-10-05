@@ -38,8 +38,8 @@ SCANREFER_VAL = json.load(open(os.path.join(CONF.PATH.DATA, "ScanRefer_filtered_
 SCAN2CAD_ROTATION = None # json.load(open(os.path.join(CONF.PATH.SCAN2CAD, "scannet_instance_rotations.json")))
 
 # constants
-# DC = SunToScannetDatasetConfig()
-DC = ScannetDatasetConfig()
+DC = SunToScannetDatasetConfig()
+# DC = ScannetDatasetConfig()
 import crash_on_ipy
 
 
@@ -79,6 +79,7 @@ def get_model(args, dataset, device):
         # mean_size_arr=DC.mean_size_arr,
         input_feature_dim=input_channels,
         num_proposal=args.num_proposals,
+        num_target=args.num_target,
         no_caption=args.no_caption,
         use_topdown=args.use_topdown,
         num_locals=args.num_locals,
@@ -450,6 +451,7 @@ if __name__ == "__main__":
     parser.add_argument("--lang_num_max", type=int, help="lang num max", default=8)
     parser.add_argument("--num_points", type=int, default=40000, help="Point Number [default: 40000]")
     parser.add_argument("--num_proposals", type=int, default=256, help="Proposal number [default: 256]")
+    parser.add_argument("--num_target", type=int, default=32, help="Target proposal number [default: 32]")
     parser.add_argument("--num_locals", type=int, default=20, help="Number of local objects [default: -1]")
     parser.add_argument("--num_scenes", type=int, default=-1, help="Number of scenes [default: -1]")
     parser.add_argument("--num_graph_steps", type=int, default=0, help="Number of graph conv layer [default: 0]")

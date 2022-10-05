@@ -103,8 +103,8 @@ def get_eval(data_dict, config, reference, use_lang_classifier=False, use_oracle
 
     # store
     data_dict["ref_acc"] = ref_acc.cpu().numpy().tolist()
-    ct = [0] * 18
-    ctt = 0
+    # ct = [0] * 18
+    # ctt = 0
     use_cat_rand = False
     # compute localization metricens
     if use_best:
@@ -117,36 +117,23 @@ def get_eval(data_dict, config, reference, use_lang_classifier=False, use_oracle
         for i in range(cluster_preds.shape[0]):
             num_bbox = data_dict["num_bbox"][i // len_nun_max]
             sem_cls_label = data_dict["sem_cls_label"][i // len_nun_max].detach().clone()
-            # print(data_dict["object_cat_list"][i // len_nun_max][i % len_nun_max])
-            # sem_cls_label = torch.argmax(end_points["sem_cls_scores"], 2)[i]
             sem_cls_label[num_bbox:] -= 1
-            # print(sem_cls_label)
-            # candidate_masks = torch.gather(sem_cls_label == pred_lang_cat[i], 0,
-            #                                data_dict["object_assignment"][i // len_nun_max])
             candidate_masks = (sem_cls_pred[i // len_nun_max] == pred_lang_cat[i])
-            # print(sem_cls_pred[i // len_nun_max], pred_lang_cat[i])
-            for ii in sem_cls_pred[i // len_nun_max]:
-                ct[ii] += 1
+            # for ii in sem_cls_pred[i // len_nun_max]:
+            #     ct[ii] += 1
             candidate_masks = candidate_masks * pred_masks[i // len_nun_max].bool()
-            # print(data_dict["object_assignment"][i // len_nun_max])
-            # print(candidate_masks)
             candidates = torch.arange(cluster_labels.shape[1])[candidate_masks]
-            ctt += candidates.shape[0]
+            # ctt += candidates.shape[0]
             if candidates.shape[0] == 0:
                 candidates = torch.arange(cluster_labels.shape[1])[pred_masks[i // len_nun_max].bool()]
-                # print(candidates)
-            # print(candidates)
             try:
                 chosen_idx = torch.randperm(candidates.shape[0])[0]
                 chosen_candidate = candidates[chosen_idx]
                 cluster_preds[i, chosen_candidate] = 1
             except IndexError:
                 cluster_preds[i, candidates] = 1
-            # sys.exit()
 
-        # print(cluster_preds[0])
         pred_ref = torch.argmax(cluster_preds, -1)  # (B,)
-        # print(pred_ref[0])
         # store the calibrated predictions and masks
         data_dict['cluster_ref'] = cluster_preds
     else:
@@ -161,8 +148,6 @@ def get_eval(data_dict, config, reference, use_lang_classifier=False, use_oracle
         # store the calibrated predictions and masks
         #data_dict['cluster_ref'] = data_dict['cluster_ref'] * pred_masks
 
-    # print(ct)
-    # print(ctt)
     # if use_oracle:
     #     raise NotImplementedError('Not Implemented For Using Oracle (Not Tested)!')
     #     pred_center = data_dict['center_label']  # (B,MAX_NUM_OBJ,3)

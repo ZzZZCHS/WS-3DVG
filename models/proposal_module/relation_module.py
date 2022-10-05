@@ -23,6 +23,7 @@ class RelationModule(nn.Module):
             nn.PReLU(hidden_size),
             nn.Conv1d(hidden_size, hidden_size, 1),
         )
+
         self.self_attn_fc = nn.ModuleList(
             nn.Sequential(  # 4 128 256 4(head)
             nn.Linear(4, 32),  # xyz, dist

@@ -51,7 +51,7 @@ CONF.SCANNETV2_TEST = os.path.join(CONF.PATH.SCANNET_META, "scannetv2_test.txt")
 CONF.SCANNETV2_LIST = os.path.join(CONF.PATH.SCANNET_META, "scannetv2.txt")
 
 # output
-CONF.PATH.OUTPUT = os.path.join(CONF.PATH.BASE, "outputs/exp_joint")
+CONF.PATH.OUTPUT = os.path.join(CONF.PATH.BASE, "outputs/test")
 CONF.PATH.AXIS_ALIGNED_MESH = os.path.join(CONF.PATH.OUTPUT, "ScanNet_axis_aligned_mesh")
 
 # pretrained
@@ -62,5 +62,5 @@ CONF.PATH.GT_FEATURES = os.path.join(CONF.PATH.CLUSTER, "gt_{}_features") # data
 # CONF.PATH.VOTENET_FEATURES = os.path.join(CONF.PATH.CLUSTER, "votenet_features")
 CONF.PATH.VOTENET_FEATURES = os.path.join(CONF.PATH.CLUSTER, "votenet_{}_predictions") # dataset
 
-CONF.PATH.VOTENET_PRETRAIN = os.path.join(CONF.PATH.PRETRAINED, "votenet", "pretrained_votenet_on_scannet.tar")
+CONF.PATH.VOTENET_PRETRAIN = os.path.join(CONF.PATH.PRETRAINED, "votenet", "pretrained_votenet_on_sunrgbd.tar")
 CONF.PATH.LANGMODULE_PRETRAIN = os.path.join(CONF.PATH.PRETRAINED, "lang", "model.pth")
