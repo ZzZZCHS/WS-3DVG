@@ -12,6 +12,7 @@ import pickle
 import random
 import numpy as np
 import multiprocessing as mp
+import torch
 
 from itertools import chain
 from collections import Counter
@@ -127,23 +128,50 @@ class ReferenceDataset(Dataset):
         label = {}
         lang_main = {}
         label_main = {}
+        masks = {}
+
         for data in self.scanrefer:
             scene_id = data["scene_id"]
             object_id = data["object_id"]
             ann_id = data["ann_id"]
             object_name = " ".join(data["object_name"].split("_"))
 
+            if self.split == "train":
+                attribute_mask_list = data["mask_first_list"][:CONF.TRAIN.MAX_DES_LEN]
+                relation_mask_list = data["mask_list"][:CONF.TRAIN.MAX_DES_LEN]
+                attribute_mask_list = [0] + attribute_mask_list + [0]
+                relation_mask_list = [0] + relation_mask_list + [0]
+                attribute_mask_num = torch.tensor(attribute_mask_list).sum()
+                relation_mask_num = torch.tensor(relation_mask_list).sum()
+
+                all_mask_list_ = relation_mask_list
+                for i in range(len(attribute_mask_list)):
+                    all_mask_list_[i] = all_mask_list_[i] + attribute_mask_list[i]
+                all_mask_num = attribute_mask_num + relation_mask_num
+
+                attr_mask_list = np.ones(CONF.TRAIN.MAX_DES_LEN + 2) * 2
+                rel_mask_list = np.ones(CONF.TRAIN.MAX_DES_LEN + 2) * 2
+                all_mask_list = np.ones(CONF.TRAIN.MAX_DES_LEN + 2) * 2
+                for i in range(len(attribute_mask_list)):
+                    attr_mask_list[i] = attribute_mask_list[i]
+                for i in range(len(relation_mask_list)):
+                    rel_mask_list[i] = relation_mask_list[i]
+                for i in range(len(all_mask_list_)):
+                    all_mask_list[i] = all_mask_list_[i]  # 0: words,  1: masked_words,  2: padding
+
             if scene_id not in lang:
                 lang[scene_id] = {}
                 label[scene_id] = {}
                 lang_main[scene_id] = {}
                 label_main[scene_id] = {}
+                masks[scene_id] = {}
 
             if object_id not in lang[scene_id]:
                 lang[scene_id][object_id] = {}
                 label[scene_id][object_id] = {}
                 lang_main[scene_id][object_id] = {}
                 label_main[scene_id][object_id] = {}
+                masks[scene_id][object_id] = {}
 
             if ann_id not in lang[scene_id][object_id]:
                 lang[scene_id][object_id][ann_id] = {}
@@ -154,6 +182,13 @@ class ReferenceDataset(Dataset):
                 lang_main[scene_id][object_id][ann_id]["first_obj"] = -1
                 lang_main[scene_id][object_id][ann_id]["unk"] = self.glove["unk"]
 
+                masks[scene_id][object_id][ann_id] = {}
+                masks[scene_id][object_id][ann_id]['attr_masks'] = {}
+                masks[scene_id][object_id][ann_id]['attr_masks_num'] = {}
+                masks[scene_id][object_id][ann_id]['rel_masks'] = {}
+                masks[scene_id][object_id][ann_id]['rel_masks_num'] = {}
+                masks[scene_id][object_id][ann_id]['all_masks'] = {}
+                masks[scene_id][object_id][ann_id]['all_masks_num'] = {}
 
             # trim long descriptions
             tokens = data["token"][:CONF.TRAIN.MAX_DES_LEN]
@@ -207,7 +242,15 @@ class ReferenceDataset(Dataset):
             label[scene_id][object_id][ann_id] = labels
             lang_main[scene_id][object_id][ann_id]["main"] = main_embeddings
 
-        return lang, label, lang_main
+            if self.split == "train":
+                masks[scene_id][object_id][ann_id]['attr_masks'] = attr_mask_list
+                masks[scene_id][object_id][ann_id]['attr_masks_num'] = attribute_mask_num
+                masks[scene_id][object_id][ann_id]['rel_masks'] = rel_mask_list
+                masks[scene_id][object_id][ann_id]['rel_masks_num'] = relation_mask_num
+                masks[scene_id][object_id][ann_id]['all_masks'] = all_mask_list
+                masks[scene_id][object_id][ann_id]['all_masks_num'] = all_mask_num
+
+        return lang, label, lang_main, masks
 
     def _ground_tranform_des(self):
         with open(GLOVE_PICKLE, "rb") as f:
@@ -362,7 +405,7 @@ class ReferenceDataset(Dataset):
         self._build_vocabulary(dataset_name)
         self.num_vocabs = len(self.vocabulary["word2idx"].keys())
         self.raw2label = self._get_raw2label()
-        self.lang, self.lang_ids, self.lang_main = self._tranform_des()
+        self.lang, self.lang_ids, self.lang_main, self.masks = self._tranform_des()
         self.ground_lang, self.ground_lang_main = self._ground_tranform_des()
         self._build_frequency(dataset_name)
 
@@ -524,6 +567,13 @@ class ScannetReferenceDataset(ReferenceDataset):
         ground_main_lang_len_list = []
         ground_first_obj_list = []
 
+        attr_masks_list = []
+        attr_masks_num_list = []
+        rel_masks_list = []
+        rel_masks_num_list = []
+        all_masks_list = []
+        all_masks_num_list = []
+
         for i in range(self.lang_num_max):
             if i < lang_num:
                 object_id = int(self.scanrefer_new[idx][i]["object_id"])
@@ -546,6 +596,13 @@ class ScannetReferenceDataset(ReferenceDataset):
                 ground_main_lang_len = self.ground_lang_main[scene_id][str(object_id)][ann_id]["len"]
                 ground_first_obj = self.ground_lang_main[scene_id][str(object_id)][ann_id]["first_obj"]
 
+                attr_masks = self.masks[scene_id][str(object_id)][ann_id]["attr_masks"]
+                attr_masks_num = self.masks[scene_id][str(object_id)][ann_id]['attr_masks_num']
+                rel_masks = self.masks[scene_id][str(object_id)][ann_id]['rel_masks']
+                rel_masks_num = self.masks[scene_id][str(object_id)][ann_id]['rel_masks_num']
+                all_masks = self.masks[scene_id][str(object_id)][ann_id]["all_masks"]
+                all_masks_num = self.masks[scene_id][str(object_id)][ann_id]['all_masks_num']
+
             object_id_list.append(object_id)
             object_name_list.append(object_name)
             ann_id_list.append(ann_id)
@@ -563,6 +620,13 @@ class ScannetReferenceDataset(ReferenceDataset):
             ground_main_lang_feat_list.append(ground_main_lang_feat)
             ground_main_lang_len_list.append(ground_main_lang_len)
             ground_first_obj_list.append(ground_first_obj)
+
+            attr_masks_list.append(attr_masks)
+            attr_masks_num_list.append(attr_masks_num)
+            rel_masks_list.append(rel_masks)
+            rel_masks_num_list.append(rel_masks_num)
+            all_masks_list.append(all_masks)
+            all_masks_num_list.append(all_masks_num)
 
         # get pc
         mesh_vertices = self.scene_data[scene_id]["mesh_vertices"]
@@ -837,6 +901,13 @@ class ScannetReferenceDataset(ReferenceDataset):
         data_dict["ground_main_lang_len_list"] = np.array(ground_main_lang_len_list).astype(np.int64)  # length of each main description
         data_dict["ground_first_obj_list"] = np.array(ground_first_obj_list).astype(np.int64)
 
+        data_dict['attr_masks_list'] = np.array(attr_masks_list).astype(np.int64)
+        data_dict['attr_masks_num_list'] = np.array(attr_masks_num_list).astype(np.int64)
+        data_dict['rel_masks_list'] = np.array(rel_masks_list).astype(np.int64)
+        data_dict['rel_masks_num_list'] = np.array(rel_masks_num_list).astype(np.int64)
+        data_dict['all_masks_list'] = np.array(all_masks_list).astype(np.int64)
+        data_dict['all_masks_num_list'] = np.array(all_masks_num_list).astype(np.int64)
+
         data_dict["ref_box_label_list"] = np.array(ref_box_label_list).astype(np.int64)  # 0/1 reference labels for each object bbox
         data_dict["ref_center_label_list"] = np.array(ref_center_label_list).astype(np.float32)
         data_dict["ref_heading_class_label_list"] = np.array(ref_heading_class_label_list).astype(np.int64)
@@ -857,6 +928,7 @@ class ScannetReferenceDataset(ReferenceDataset):
         data_dict["unique_multiple_list"] = np.array(unique_multiple_list).astype(np.int64)
 
         return data_dict
+
 
 class ScannetReferenceTestDataset():
        
@@ -934,6 +1006,7 @@ class ScannetReferenceTestDataset():
             scene_data[scene_id]["mesh_vertices"] = np.load(os.path.join(CONF.PATH.SCANNET_DATA, scene_id)+"_aligned_vert.npy") # axis-aligned
 
         return scene_data
+
 
 class ScannetObjectDataset(ReferenceDataset):
        

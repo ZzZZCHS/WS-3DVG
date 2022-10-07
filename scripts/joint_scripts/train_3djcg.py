@@ -275,8 +275,8 @@ def get_scannet_scene_list(split):
 
 def get_scanrefer(args):
     if args.dataset == "ScanRefer":
-        scanrefer_train = json.load(open(os.path.join(CONF.PATH.DATA, "ScanRefer_filtered_train.json")))
-        scanrefer_eval_train = json.load(open(os.path.join(CONF.PATH.DATA, "ScanRefer_filtered_train.json")))
+        scanrefer_train = json.load(open(os.path.join(CONF.PATH.DATA, "Masked_ScanRefer_filtered_train.json")))
+        scanrefer_eval_train = json.load(open(os.path.join(CONF.PATH.DATA, "Masked_ScanRefer_filtered_train.json")))
         scanrefer_eval_val = json.load(open(os.path.join(CONF.PATH.DATA, "ScanRefer_filtered_val.json")))
     elif args.dataset == "ReferIt3D":
         scanrefer_train = json.load(open(os.path.join(CONF.PATH.DATA, "nr3d_train.json")))

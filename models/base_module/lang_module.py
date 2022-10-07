@@ -44,6 +44,7 @@ class LangModule(nn.Module):
         encode the input descriptions
         """
         word_embs = data_dict["ground_lang_feat_list"]  # B * 32 * MAX_DES_LEN * LEN(300)
+        # print(word_embs.shape)
         lang_len = data_dict["ground_lang_len_list"]
         #word_embs = data_dict["lang_feat_list"]  # B * 32 * MAX_DES_LEN * LEN(300)
         #lang_len = data_dict["lang_len_list"]

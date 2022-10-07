@@ -25,13 +25,14 @@ def reconstruct_loss(logit, idx, mask, weights=None):
     # nll_loss = nll_loss.mean()
     return nll_loss.contiguous()
 
+
 def weakly_supervised_loss(score, rec_loss):
     '''
         score: [bs*len_num_max, n_candidate]
         rec_loss: [bs*len_num_max, n_candidate]
     '''
     n_candidate = score.shape[1]
-    rewards = torch.linspace(0,1,n_candidate)   # pseudo-label by rec_loss
+    rewards = torch.linspace(0, 1, n_candidate)   # pseudo-label by rec_loss
 
     idx = torch.argsort(rec_loss, dim=-1, descending=True)
     _, idx = torch.sort(idx, dim=-1)

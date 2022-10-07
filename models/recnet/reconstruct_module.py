@@ -5,7 +5,7 @@ from models.transformer.transformers import Transformer
 
 
 class ReconstructModule(nn.Module):
-    def __init__(self, vocab_size, emb_size=300, hidden_size=512, max_des_len=100, head=4,
+    def __init__(self, vocab_size, emb_size=300, hidden_size=128, max_des_len=100, head=4,
                  num_encoder_layers=3, num_decoder_layers=3):
         super().__init__()
         self.emb_size = emb_size
@@ -37,7 +37,7 @@ class ReconstructModule(nn.Module):
         embs_mask = 1 - (all_masks_list==2).int()
         object_mask = torch.zeros(batch_size*len_num_max, object_num)
         trans_out = self.reconstruct_trans(all_masked_embs, embs_mask, object_feat, object_mask)
-        word_logit = self.word_fc(trans_out).reshape(batch_size, len_num_max, max_des_len, -1)  #[bs, len_num_max, max_des_len, vocab_size]
+        word_logit = self.vocab_fc(trans_out).reshape(batch_size, len_num_max, max_des_len, -1)  #[bs, len_num_max, max_des_len, vocab_size]
         return word_logit
 
     def _mask_words(self, words_feat, mask_list):

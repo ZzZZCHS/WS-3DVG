@@ -20,16 +20,6 @@ from models.proposal_module.ROI_heads.roi_heads import StandardROIHeads
 class ProposalModule(nn.Module):
     def __init__(self, num_proposal, sampling, seed_feat_dim=256, dataset_config=None, hidden_size=128, num_target=32):
         super().__init__()
-        self.use_obj_embedding = True
-        self.use_box_embedding = True
-        self.bbox_embedding = nn.Linear(27, hidden_size)
-        self.obj_embedding = nn.Linear(128, hidden_size)
-        self.features_concat = nn.Sequential(
-            nn.Conv1d(128, hidden_size, 1),
-            nn.BatchNorm1d(hidden_size),
-            nn.PReLU(hidden_size),
-            nn.Conv1d(hidden_size, hidden_size, 1),
-        )
         if hasattr(dataset_config, 'sun_num_class'):
             self.num_class = dataset_config.sun_num_class
             self.num_heading_bin = dataset_config.sun_num_heading_bin
@@ -65,6 +55,17 @@ class ProposalModule(nn.Module):
         self.conv3 = torch.nn.Conv1d(128, 2 + 3 + self.num_heading_bin * 2 + self.num_size_cluster * 4 + self.num_class, 1)
         self.bn1 = torch.nn.BatchNorm1d(128)
         self.bn2 = torch.nn.BatchNorm1d(128)
+
+        self.use_obj_embedding = True
+        self.use_box_embedding = True
+        self.bbox_embedding = nn.Linear(27, hidden_size)
+        self.obj_embedding = nn.Linear(128, hidden_size)
+        self.features_concat = nn.Sequential(
+            nn.Conv1d(128, hidden_size, 1),
+            nn.BatchNorm1d(hidden_size),
+            nn.PReLU(hidden_size),
+            nn.Conv1d(hidden_size, hidden_size, 1),
+        )
 
     def forward(self, xyz, features, data_dict):
         """
@@ -216,12 +217,12 @@ class ProposalModule(nn.Module):
         pred_by_target_cls = torch.gather(sem_cls_scores, 2, pred_lang_cat.unsqueeze(-1).unsqueeze(-1).expand(-1, num_proposal, -1)).squeeze(-1)  # bs*len_num_max, num_proposal
         target_ids = torch.topk(pred_by_target_cls, self.num_target, 1)[1]  # bs*len_num_max, num_target
         other_ids = torch.topk(pred_by_target_cls, num_proposal - self.num_target, 1, largest=False)[1]
-        target_feat = torch.gather(bbox_feature, 1, target_ids.unsqueeze(-1))  # bs*len_num_max, num_target, hiddem_dim
-        other_feat = torch.gather(bbox_feature, 1, other_ids.unsqueeze(-1))
-        data_dict["target_ids"] = target_ids
-        data_dict["other_ids"] = other_ids
-        data_dict["target_feat"] = target_feat
-        data_dict["other_feat"] = other_feat
+        target_feat = torch.gather(bbox_feature, 1, target_ids.unsqueeze(-1).expand(-1, -1, hidden_dim))  # bs*len_num_max, num_target, hiddem_dim
+        other_feat = torch.gather(bbox_feature, 1, other_ids.unsqueeze(-1).expand(-1, -1, hidden_dim))
+        data_dict["target_ids"] = target_ids.resize(bs, len_num_max, self.num_target)
+        data_dict["other_ids"] = other_ids.resize(bs, len_num_max, num_proposal - self.num_target)
+        data_dict["target_feat"] = target_feat.resize(bs, len_num_max, self.num_target, hidden_dim)
+        data_dict["other_feat"] = other_feat.resize(bs, len_num_max, num_proposal - self.num_target, hidden_dim)
 
 
 def get_bbox_centers(corners):

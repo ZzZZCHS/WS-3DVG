@@ -12,6 +12,7 @@ from models.proposal_module.proposal_module_fcos import ProposalModule
 from models.proposal_module.relation_module import RelationModule
 from models.refnet.match_module import MatchModule
 from models.capnet.caption_module import SceneCaptionModule, TopDownSceneCaptionModule
+from models.recnet.reconstruct_module import ReconstructModule
 
 
 class JointNet(nn.Module):
@@ -54,6 +55,8 @@ class JointNet(nn.Module):
         self.relation = RelationModule(num_proposals=num_proposal, det_channel=128)  # bef 256
 
         self.lang = LangModule(dataset_config.num_class, use_lang_classifier, use_bidir, emb_size, ground_hidden_size)
+
+        self.recnet = ReconstructModule(vocab_size=len(vocabulary["idx2word"]))
 
         self.match = MatchModule(num_proposals=num_proposal, lang_size=(1 + int(self.use_bidir)) * ground_hidden_size, det_channel=128)  # bef 256
 
@@ -98,5 +101,6 @@ class JointNet(nn.Module):
         # data_dict = self.relation(data_dict)
 
         data_dict = self.match(data_dict)
+
 
         return data_dict

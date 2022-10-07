@@ -81,7 +81,6 @@ class MatchModule(nn.Module):
         confidence1 = self.match(feature1_agg).squeeze(1)  # batch_size, num_proposals
         # print("confidence1", confidence1.shape)
         data_dict["cluster_ref"] = confidence1
-
         return data_dict
 
 
