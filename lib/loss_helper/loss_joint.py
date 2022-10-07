@@ -13,6 +13,7 @@ from lib.configs.config_joint import CONF
 from .loss_detection import compute_vote_loss, compute_objectness_loss, compute_box_loss, compute_box_and_sem_cls_loss
 from .loss_captioning import compute_cap_loss
 from .loss_grounding import compute_reference_loss, compute_lang_classification_loss
+from .loss_reconstruct import reconstruct_loss, weakly_supervised_loss
 
 FAR_THRESHOLD = 0.3
 NEAR_THRESHOLD = 0.3
@@ -80,6 +81,21 @@ def get_joint_loss(data_dict, device, config, weights,
     # data_dict["ori_acc"] = torch.zeros(1)[0].to(device)
     # data_dict["dist_loss"] = torch.zeros(1)[0].to(device)
     # data_dict["lang_loss"] = torch.zeros(1)[0].cuda()
+
+    rec_word_logits = data_dict["rec_word_logits"]
+    gt_idx = data_dict["ground_lang_ids_list"]
+    masks_list = data_dict["all_masks_list"]
+    target_obj_scores = data_dict["target_scores"]
+    # print(rec_word_logits.shape, gt_idx.shape, masks_list.shape, target_obj_scores.shape)
+    num_target = target_obj_scores.shape[1]
+    rec_loss = torch.zeros_like(target_obj_scores).to(target_obj_scores.device)
+    for i in range(num_target):
+        rec_word_logits_i = rec_word_logits[:, :, i, :, :]
+        rec_loss[:, i] = reconstruct_loss(rec_word_logits_i, gt_idx, masks_list)
+    weak_loss = weakly_supervised_loss(target_obj_scores, rec_loss)
+    data_dict["rec_loss"] = rec_loss
+    data_dict["weak_loss"] = weak_loss
+
     if reference:
         # Reference loss
         data_dict, ref_loss, _, cluster_labels = compute_reference_loss(data_dict, config)
@@ -145,16 +161,17 @@ def get_joint_loss(data_dict, device, config, weights,
     # loss *= 10 # amplify
 
     loss = torch.zeros(1)[0].to(device)
-    if caption and data_dict["epoch"] < num_ground_epoch:
-        loss += 0*data_dict["cap_loss"]
-    elif caption:
-        loss += 0.2*data_dict["cap_loss"]
-    if orientation:
-        loss += 0.1*data_dict["ori_loss"]
-    if distance:
-        loss += 0.1*data_dict["dist_loss"]
-    if reference:
-        loss += 0.3*data_dict["ref_loss"]
+    loss += weak_loss
+    # if caption and data_dict["epoch"] < num_ground_epoch:
+    #     loss += 0*data_dict["cap_loss"]
+    # elif caption:
+    #     loss += 0.2*data_dict["cap_loss"]
+    # if orientation:
+    #     loss += 0.1*data_dict["ori_loss"]
+    # if distance:
+    #     loss += 0.1*data_dict["dist_loss"]
+    # if reference:
+    #     loss += 0.3*data_dict["ref_loss"]
     if use_lang_classifier:
         loss += 0.3*data_dict["lang_loss"]
 

@@ -215,6 +215,12 @@ class ProposalModule(nn.Module):
         sem_cls_scores = data_dict["sem_cls_scores"].unsqueeze(1).expand(-1, len_num_max, -1, -1).resize(
             bs * len_num_max, num_proposal, num_class)
         pred_by_target_cls = torch.gather(sem_cls_scores, 2, pred_lang_cat.unsqueeze(-1).unsqueeze(-1).expand(-1, num_proposal, -1)).squeeze(-1)  # bs*len_num_max, num_proposal
+        objectness_preds_batch = torch.argmax(data_dict['objectness_scores'], 2).long()
+        non_objectness_masks = (objectness_preds_batch == 0).byte()  # bs, num_proposal
+        non_objectness_masks = non_objectness_masks.unsqueeze(1).expand(-1, len_num_max, -1).resize(bs * len_num_max, num_proposal)
+        # print(pred_by_target_cls[0])
+        pred_by_target_cls.masked_fill_(non_objectness_masks, -float('inf'))
+        # print(pred_by_target_cls[0])
         target_ids = torch.topk(pred_by_target_cls, self.num_target, 1)[1]  # bs*len_num_max, num_target
         other_ids = torch.topk(pred_by_target_cls, num_proposal - self.num_target, 1, largest=False)[1]
         target_feat = torch.gather(bbox_feature, 1, target_ids.unsqueeze(-1).expand(-1, -1, hidden_dim))  # bs*len_num_max, num_target, hiddem_dim

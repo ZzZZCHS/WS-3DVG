@@ -32,13 +32,13 @@ def weakly_supervised_loss(score, rec_loss):
         rec_loss: [bs*len_num_max, n_candidate]
     """
     n_candidate = score.shape[1]
-    rewards = torch.linspace(0, 1, n_candidate)  # pseudo-label by rec_loss
+    rewards = torch.linspace(0, 1, n_candidate).to(score.device)  # pseudo-label by rec_loss
 
     idx = torch.argsort(rec_loss, dim=-1, descending=True)
     _, idx = torch.sort(idx, dim=-1)
     rewards = rewards[idx]
     grounding_loss = -(rewards * score.log_softmax(dim=-1))
-    return grounding_loss
+    return grounding_loss.mean()
 
 
 if __name__ == '__main__':

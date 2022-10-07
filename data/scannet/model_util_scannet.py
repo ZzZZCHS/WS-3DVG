@@ -259,7 +259,7 @@ class SunToScannetDatasetConfig(object):
                 self.sun_label_feat[i] = glove["nightstand"]
             else:
                 self.sun_label_feat[i] = glove[self.sun_class2type[i]]
-        print(self.scan_label_feat.shape, self.sun_label_feat.shape)
+        # print(self.scan_label_feat.shape, self.sun_label_feat.shape)
         # print(self.class2type, self.sun_class2type)
         self.scan_label_feat = torch.from_numpy(self.scan_label_feat.astype(np.float32))
         self.sun_label_feat = torch.from_numpy(self.sun_label_feat.astype(np.float32))

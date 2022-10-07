@@ -10,8 +10,10 @@ class ReconstructModule(nn.Module):
         super().__init__()
         self.emb_size = emb_size
         self.hidden_size = hidden_size
+        self.vocab_size = vocab_size
 
         self.mask_vec = nn.Parameter(torch.zeros(emb_size).float(), requires_grad=True)
+        self.token_fc = nn.Linear(emb_size, hidden_size)
         self.word_fc = nn.Linear(emb_size, hidden_size)
 
         self.word_position = SinusoidalPositionalEmbedding(hidden_size, 0, max_des_len)
@@ -22,39 +24,38 @@ class ReconstructModule(nn.Module):
 
     def forward(self, original_embs, object_feat, masks_list):
         """
-            words_feat: [bs, len_num_max, max_des_len, emb_dim]
-            object_feat: [bs, 1+proposal, dim]
+            original_embs: [bs, len_num_max, max_des_len, emb_dim]
+            object_feat: [bs, len_num_max, 1+proposal, dim]
             data_dict['XXX_masks_list']: [bs, len_num_max, max_des_len]
         """
         batch_size, len_num_max, max_des_len = original_embs.shape[:3]
-        batch_size, object_num = object_feat.shape[:2]
+        batch_size, _, object_num = object_feat.shape[:3]
 
         object_feat = object_feat.reshape(batch_size * len_num_max, object_num, -1)
         word_embs = original_embs.reshape(batch_size * len_num_max, max_des_len, -1)
-        print(max_des_len)
-        print("mask_list:", masks_list.shape)
-        all_masks_list = masks_list.reshape(batch_size * len_num_max, max_des_len).unsqueeze(0).repeat(1, 1, self.emb_size)
-        all_masked_embs = self._mask_words(word_embs, all_masks_list) + self.word_position
+        word_embs = self.word_fc(word_embs)
+        all_masks_list = masks_list.reshape(batch_size * len_num_max, max_des_len)
+        all_masked_embs = self._mask_words(word_embs, all_masks_list) + self.word_position(word_embs)
 
         embs_mask = 1 - (all_masks_list == 2).int()
-        object_mask = torch.zeros(batch_size*len_num_max, object_num)
-        trans_out = self.reconstruct_trans(all_masked_embs, embs_mask, object_feat, object_mask)
-        word_logit = self.vocab_fc(trans_out).reshape(batch_size, len_num_max, max_des_len, -1)  #[bs, len_num_max, max_des_len, vocab_size]
+        object_mask = torch.zeros(batch_size * len_num_max, object_num).to(object_feat.device)
+        # print(all_masked_embs.shape, embs_mask.shape, object_feat.shape, object_mask.shape)
+        trans_out = self.reconstruct_trans(object_feat, object_mask, all_masked_embs, embs_mask)
+        # print(trans_out.shape, self.hidden_size)
+        word_logit = self.vocab_fc(trans_out).reshape(batch_size, len_num_max, max_des_len, self.vocab_size)  #[bs, len_num_max, max_des_len, vocab_size]
         return word_logit
 
-    def _mask_words(self, words_feat, mask_list):
+    def _mask_words(self, words_feat, masks_list):
         """
-            words_feat: [bs, n, emb_dim]
+            words_feat: [bs, n, hidden_dim]
             mask_list: [bs, n]  #0:word  1:masked  2:padding
         """
         token = self.mask_vec.cuda().unsqueeze(0).unsqueeze(0)
-        token = self.word_fc(token)
+        token = self.token_fc(token)  # [bs, n, hidden_dim]
 
-        masked_words = mask_list.unsqueeze(-1).repeat(1, 1, self.emb_size)
-        # exit(0)
         masked_words_vec = words_feat.new_zeros(*words_feat.size()) + token
-        masked_words_vec = masked_words_vec.masked_fill(masked_words != 1, 0)
-        words_feat1 = words_feat.masked_fill(masked_words == 1, 0) + masked_words_vec
+        masked_words_vec = masked_words_vec.masked_fill(masks_list.unsqueeze(-1) != 1, 0)
+        words_feat1 = words_feat.masked_fill(masks_list.unsqueeze(-1) == 1, 0) + masked_words_vec
         return words_feat1
 
 

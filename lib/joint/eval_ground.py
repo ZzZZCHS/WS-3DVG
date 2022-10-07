@@ -81,9 +81,6 @@ def get_eval(data_dict, config, reference, use_lang_classifier=False, use_oracle
         pred_masks = (objectness_preds_batch == 1).float()
         label_masks = (objectness_labels_batch == 1).float()
 
-    # print(pred_masks[0])
-    # print(label_masks[0])
-
     batch_size, len_nun_max = data_dict['ref_center_label_list'].shape[:2]
     cluster_preds = torch.argmax(data_dict["cluster_ref"], 1).long().unsqueeze(1).repeat(1,pred_masks.shape[1])
 
@@ -144,7 +141,16 @@ def get_eval(data_dict, config, reference, use_lang_classifier=False, use_oracle
         #     if i != 0:
         #         pred_mask = pred_masks[i].repeat(len_nun_max, 1)
         #         pred_mask1 = torch.cat([pred_mask1, pred_mask], dim=0)
-        pred_ref = torch.argmax(data_dict['cluster_ref'] * pred_mask1, 1)  # (B,)
+        target_ids = data_dict["target_ids"]
+        bs, len_num_max, num_target = target_ids.shape
+        target_ids = target_ids.resize(bs * len_num_max, num_target)
+        target_object_mask = pred_mask1.new_zeros(*pred_mask1.size())
+        # print(target_ids[0])
+        target_object_mask.scatter_(1, target_ids, 1.)
+        # print(target_object_mask[0], pred_mask1[0])
+        pred_ref = torch.argmax(data_dict['cluster_ref'] * pred_mask1 * target_object_mask, 1)  # (B,)
+        # print((pred_mask1 * target_object_mask)[0])
+        # print(pred_ref)
         # store the calibrated predictions and masks
         #data_dict['cluster_ref'] = data_dict['cluster_ref'] * pred_masks
 
@@ -355,7 +361,7 @@ def get_eval(data_dict, config, reference, use_lang_classifier=False, use_oracle
     data_dict["pred_bboxes"] = pred_bboxes
     data_dict["gt_bboxes"] = gt_bboxes
 
-    # print(data_dict["ref_iou_rate_0.1"], data_dict["ref_iou_rate_0.25"], data_dict["ref_iou_rate_0.5"])
+    # print(data_dict["ref_iou_0.1"], data_dict["ref_iou_0.25"], data_dict["ref_iou_0.5"])
 
     # --------------------------------------------
     # Some other statistics

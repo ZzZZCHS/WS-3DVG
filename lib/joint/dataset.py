@@ -214,6 +214,7 @@ class ReferenceDataset(Dataset):
             glove = pickle.load(f)
 
         lang = {}
+        label = {}
         lang_main = {}
         masks = {}
 
@@ -247,16 +248,19 @@ class ReferenceDataset(Dataset):
 
             if scene_id not in lang:
                 lang[scene_id] = {}
+                label[scene_id] = {}
                 lang_main[scene_id] = {}
                 masks[scene_id] = {}
 
             if object_id not in lang[scene_id]:
                 lang[scene_id][object_id] = {}
+                label[scene_id][object_id] = {}
                 lang_main[scene_id][object_id] = {}
                 masks[scene_id][object_id] = {}
 
             if ann_id not in lang[scene_id][object_id]:
                 lang[scene_id][object_id][ann_id] = {}
+                label[scene_id][object_id][ann_id] = {}
                 lang_main[scene_id][object_id][ann_id] = {}
                 lang_main[scene_id][object_id][ann_id]["main"] = {}
                 lang_main[scene_id][object_id][ann_id]["len"] = 0
@@ -274,6 +278,7 @@ class ReferenceDataset(Dataset):
             # tokenize the description
             tokens = data["token"]
             embeddings = np.zeros((CONF.TRAIN.MAX_GROUND_DES_LEN, 300))
+            labels = np.zeros(CONF.TRAIN.MAX_GROUND_DES_LEN)
             main_embeddings = np.zeros((CONF.TRAIN.MAX_GROUND_DES_LEN, 300))
             pd = 1
             # if object_name[:6] == "shower":
@@ -286,8 +291,10 @@ class ReferenceDataset(Dataset):
                     token = tokens[token_id]
                     if token in glove:
                         embeddings[token_id] = glove[token]
+                        labels[token_id] = self.vocabulary["word2idx"][token]
                     else:
                         embeddings[token_id] = glove["pad"]
+                        labels[token_id] = self.vocabulary["word2idx"]["pad_"]
                     if pd == 1:
                         if token in glove:
                             main_embeddings[token_id] = glove[token]
@@ -323,6 +330,7 @@ class ReferenceDataset(Dataset):
 
             # store
             lang[scene_id][object_id][ann_id] = embeddings
+            label[scene_id][object_id][ann_id] = labels
             lang_main[scene_id][object_id][ann_id]["main"] = main_embeddings
 
             if self.split == "train":
@@ -333,39 +341,38 @@ class ReferenceDataset(Dataset):
                 masks[scene_id][object_id][ann_id]['all_masks'] = all_mask_list
                 masks[scene_id][object_id][ann_id]['all_masks_num'] = all_mask_num
 
-        return lang, lang_main, masks
+        return lang, label, lang_main, masks
 
     def _build_vocabulary(self, dataset_name):
         vocab_path = VOCAB.format(dataset_name)
         if os.path.exists(vocab_path):
             self.vocabulary = json.load(open(vocab_path))
         else:
-            if self.split == "train":
-                all_words = chain(*[data["token"][:CONF.TRAIN.MAX_DES_LEN] for data in self.scanrefer])
-                word_counter = Counter(all_words)
-                word_counter = sorted([(k, v) for k, v in word_counter.items() if k in self.glove], key=lambda x: x[1], reverse=True)
-                word_list = [k for k, _ in word_counter]
+            all_words = chain(*[data["token"][:CONF.TRAIN.MAX_GROUND_DES_LEN] for data in self.scanrefer])
+            word_counter = Counter(all_words)
+            word_counter = sorted([(k, v) for k, v in word_counter.items() if k in self.glove], key=lambda x: x[1], reverse=True)
+            word_list = [k for k, _ in word_counter]
 
-                # build vocabulary
-                word2idx, idx2word = {}, {}
-                spw = ["pad_", "unk", "sos", "eos"] # NOTE distinguish padding token "pad_" and the actual word "pad"
-                for i, w in enumerate(word_list):
-                    shifted_i = i + len(spw)
-                    word2idx[w] = shifted_i
-                    idx2word[shifted_i] = w
-
-                # add special words into vocabulary
+            # build vocabulary
+            word2idx, idx2word = {}, {}
+            spw = ["pad_", "unk", "sos", "eos"] # NOTE distinguish padding token "pad_" and the actual word "pad"
+            # add special words into vocabulary
+            if "pad_" not in word2idx.keys():
                 for i, w in enumerate(spw):
                     word2idx[w] = i
                     idx2word[i] = w
 
-                vocab = {
-                    "word2idx": word2idx,
-                    "idx2word": idx2word
-                }
-                json.dump(vocab, open(vocab_path, "w"), indent=4)
+            for i, w in enumerate(word_list):
+                shifted_i = i + len(spw)
+                word2idx[w] = shifted_i
+                idx2word[shifted_i] = w
 
-                self.vocabulary = vocab
+            vocab = {
+                "word2idx": word2idx,
+                "idx2word": idx2word
+            }
+            json.dump(vocab, open(vocab_path, "w"), indent=4)
+            self.vocabulary = vocab
 
     def _build_frequency(self, dataset_name):
         vocab_weights_path = VOCAB_WEIGHTS.format(dataset_name)
@@ -404,7 +411,7 @@ class ReferenceDataset(Dataset):
         self.num_vocabs = len(self.vocabulary["word2idx"].keys())
         self.raw2label = self._get_raw2label()
         self.lang, self.lang_ids, self.lang_main = self._tranform_des()
-        self.ground_lang, self.ground_lang_main, self.masks = self._ground_tranform_des()
+        self.ground_lang, self.ground_lang_ids, self.ground_lang_main, self.masks = self._ground_tranform_des()
         self._build_frequency(dataset_name)
 
         # add scannet data
@@ -561,6 +568,7 @@ class ScannetReferenceDataset(ReferenceDataset):
 
         ground_lang_feat_list = []
         ground_lang_len_list = []
+        ground_lang_ids_list = []
         ground_main_lang_feat_list = []
         ground_main_lang_len_list = []
         ground_first_obj_list = []
@@ -590,6 +598,7 @@ class ScannetReferenceDataset(ReferenceDataset):
                 ground_lang_feat = self.ground_lang[scene_id][str(object_id)][ann_id]
                 ground_lang_len = len(self.scanrefer_new[idx][i]["token"])
                 ground_lang_len = ground_lang_len if ground_lang_len <= CONF.TRAIN.MAX_GROUND_DES_LEN else CONF.TRAIN.MAX_GROUND_DES_LEN
+                ground_lang_ids = self.ground_lang_ids[scene_id][str(object_id)][ann_id]
                 ground_main_lang_feat = self.ground_lang_main[scene_id][str(object_id)][ann_id]["main"]
                 ground_main_lang_len = self.ground_lang_main[scene_id][str(object_id)][ann_id]["len"]
                 ground_first_obj = self.ground_lang_main[scene_id][str(object_id)][ann_id]["first_obj"]
@@ -615,6 +624,7 @@ class ScannetReferenceDataset(ReferenceDataset):
 
             ground_lang_feat_list.append(ground_lang_feat)
             ground_lang_len_list.append(ground_lang_len)
+            ground_lang_ids_list.append(ground_lang_ids)
             ground_main_lang_feat_list.append(ground_main_lang_feat)
             ground_main_lang_len_list.append(ground_main_lang_len)
             ground_first_obj_list.append(ground_first_obj)
@@ -895,6 +905,7 @@ class ScannetReferenceDataset(ReferenceDataset):
 
         data_dict["ground_lang_feat_list"] = np.array(ground_lang_feat_list).astype(np.float32)  # language feature vectors
         data_dict["ground_lang_len_list"] = np.array(ground_lang_len_list).astype(np.int64)  # length of each description
+        data_dict["ground_lang_ids_list"] = np.array(ground_lang_ids_list).astype(np.int64)
         data_dict["ground_main_lang_feat_list"] = np.array(ground_main_lang_feat_list).astype(np.float32)  # main language feature vectors
         data_dict["ground_main_lang_len_list"] = np.array(ground_main_lang_len_list).astype(np.int64)  # length of each main description
         data_dict["ground_first_obj_list"] = np.array(ground_first_obj_list).astype(np.int64)

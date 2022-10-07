@@ -114,7 +114,7 @@ class JointNet(nn.Module):
         for i in range(self.num_target):
             object_feat = torch.cat((target_feat[:, :, i:i+1, :], other_feat), dim=2)
             word_logit = self.recnet(words_feat, object_feat, masks_list)  # bs, len_num_max, max_des_len, vocab_size
-            word_logits[:, :, i, :, :] = word_logit.unsqueeze(dim=2)
+            word_logits[:, :, i, :, :] = word_logit
 
         data_dict["rec_word_logits"] = word_logits
 
@@ -122,8 +122,6 @@ class JointNet(nn.Module):
 
         data_dict = self.match(data_dict)
         all_score = data_dict["cluster_ref"]
-        print("all_score:", all_score.shape)
-        print("target_ids:", target_ids.shape)
-        # target_score =
+        data_dict["target_scores"] = torch.gather(all_score, 1, target_ids.resize(bs * len_num_max, self.num_target))
 
         return data_dict

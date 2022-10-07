@@ -99,6 +99,7 @@ class TransformerEncoderLayer(nn.Module):
         d_model = d_model
         num_heads = num_heads
         self.dropout = dropout
+        self.attn_mask = None
 
         self.self_attn = MultiheadAttention2(d_model, num_heads)
         self.self_attn_layer_norm = nn.LayerNorm(d_model)
