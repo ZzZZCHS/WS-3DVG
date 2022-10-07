@@ -245,6 +245,13 @@ class ReferenceDataset(Dataset):
                     rel_mask_list[i] = relation_mask_list[i]
                 for i in range(len(all_mask_list_)):
                     all_mask_list[i] = all_mask_list_[i]  # 0: words,  1: masked_words,  2: padding
+            else:
+                attr_mask_list = np.ones(CONF.TRAIN.MAX_GROUND_DES_LEN)
+                rel_mask_list = np.ones(CONF.TRAIN.MAX_GROUND_DES_LEN)
+                all_mask_list = np.ones(CONF.TRAIN.MAX_GROUND_DES_LEN)
+                attribute_mask_num = torch.tensor(attr_mask_list).sum()
+                relation_mask_num = torch.tensor(rel_mask_list).sum()
+                all_mask_num = torch.tensor(all_mask_list).sum()
 
             if scene_id not in lang:
                 lang[scene_id] = {}
@@ -333,13 +340,12 @@ class ReferenceDataset(Dataset):
             label[scene_id][object_id][ann_id] = labels
             lang_main[scene_id][object_id][ann_id]["main"] = main_embeddings
 
-            if self.split == "train":
-                masks[scene_id][object_id][ann_id]['attr_masks'] = attr_mask_list
-                masks[scene_id][object_id][ann_id]['attr_masks_num'] = attribute_mask_num
-                masks[scene_id][object_id][ann_id]['rel_masks'] = rel_mask_list
-                masks[scene_id][object_id][ann_id]['rel_masks_num'] = relation_mask_num
-                masks[scene_id][object_id][ann_id]['all_masks'] = all_mask_list
-                masks[scene_id][object_id][ann_id]['all_masks_num'] = all_mask_num
+            masks[scene_id][object_id][ann_id]['attr_masks'] = attr_mask_list
+            masks[scene_id][object_id][ann_id]['attr_masks_num'] = attribute_mask_num
+            masks[scene_id][object_id][ann_id]['rel_masks'] = rel_mask_list
+            masks[scene_id][object_id][ann_id]['rel_masks_num'] = relation_mask_num
+            masks[scene_id][object_id][ann_id]['all_masks'] = all_mask_list
+            masks[scene_id][object_id][ann_id]['all_masks_num'] = all_mask_num
 
         return lang, label, lang_main, masks
 
