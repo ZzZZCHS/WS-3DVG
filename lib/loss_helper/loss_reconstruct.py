@@ -2,11 +2,11 @@ import torch
 
 
 def reconstruct_loss(logit, idx, mask, weights=None):
-    '''
+    """
         logit: [bs, len_num_max, max_des_len, vocab_size]
         idx: [bs, len_num_max, max_des_len]
         mask: [bs, len_num_max, max_des_len]
-    '''
+    """
 
     bs, len_num_max, max_des_len = logit.shape[:3]
     logit = logit.reshape(bs * len_num_max, max_des_len, -1)
@@ -21,18 +21,18 @@ def reconstruct_loss(logit, idx, mask, weights=None):
 
     nll_loss = nll_loss.masked_fill(mask == 0, 0)
     nll_loss = nll_loss.masked_fill(mask == 2, 0)
-    nll_loss = nll_loss.sum(dim=-1) / (mask==1).int().sum(dim=-1)  # [bs * len_num_max]
+    nll_loss = nll_loss.sum(dim=-1) / (mask == 1).int().sum(dim=-1)  # [bs * len_num_max]
     # nll_loss = nll_loss.mean()
     return nll_loss.contiguous()
 
 
 def weakly_supervised_loss(score, rec_loss):
-    '''
+    """
         score: [bs*len_num_max, n_candidate]
         rec_loss: [bs*len_num_max, n_candidate]
-    '''
+    """
     n_candidate = score.shape[1]
-    rewards = torch.linspace(0, 1, n_candidate)   # pseudo-label by rec_loss
+    rewards = torch.linspace(0, 1, n_candidate)  # pseudo-label by rec_loss
 
     idx = torch.argsort(rec_loss, dim=-1, descending=True)
     _, idx = torch.sort(idx, dim=-1)

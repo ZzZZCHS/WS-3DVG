@@ -37,6 +37,9 @@ class JointNet(nn.Module):
         self.no_reference = no_reference
         self.no_caption = no_caption
         self.dataset_config = dataset_config
+        self.num_target = num_target
+        self.num_other = num_proposal - num_target
+        self.vocab_size = len(vocabulary["idx2word"])
 
         # --------- PROPOSAL GENERATION ---------
         # Backbone point feature learning
@@ -56,7 +59,7 @@ class JointNet(nn.Module):
 
         self.lang = LangModule(dataset_config.num_class, use_lang_classifier, use_bidir, emb_size, ground_hidden_size)
 
-        self.recnet = ReconstructModule(vocab_size=len(vocabulary["idx2word"]))
+        self.recnet = ReconstructModule(vocab_size=self.vocab_size)
 
         self.match = MatchModule(num_proposals=num_proposal, lang_size=(1 + int(self.use_bidir)) * ground_hidden_size, det_channel=128)  # bef 256
 
@@ -98,9 +101,29 @@ class JointNet(nn.Module):
         # proposal generation
         data_dict = self.pnet(xyz, features, data_dict)
 
+        # reconstruction
+        target_feat = data_dict["target_feat"]
+        other_feat = data_dict["other_feat"]
+        target_ids = data_dict["target_ids"]
+        words_feat = data_dict["ground_lang_feat_list"]
+        masks_list = data_dict["all_masks_list"]
+        bs, len_num_max, _, hidden_dim = target_feat.shape
+        max_des_len = words_feat.shape[2]
+        device = target_feat.device
+        word_logits = torch.zeros(bs, len_num_max, self.num_target, max_des_len, self.vocab_size).to(device)
+        for i in range(self.num_target):
+            object_feat = torch.cat((target_feat[:, :, i:i+1, :], other_feat), dim=2)
+            word_logit = self.recnet(words_feat, object_feat, masks_list)  # bs, len_num_max, max_des_len, vocab_size
+            word_logits[:, :, i, :, :] = word_logit.unsqueeze(dim=2)
+
+        data_dict["rec_word_logits"] = word_logits
+
         # data_dict = self.relation(data_dict)
 
         data_dict = self.match(data_dict)
-
+        all_score = data_dict["cluster_ref"]
+        print("all_score:", all_score.shape)
+        print("target_ids:", target_ids.shape)
+        # target_score =
 
         return data_dict
