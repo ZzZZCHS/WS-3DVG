@@ -25,22 +25,13 @@ from lib.pointnet2.pytorch_utils import BNMomentumScheduler
 ITER_REPORT_TEMPLATE = """
 -------------------------------iter: [{epoch_id}: {iter_id}/{total_iter}]-------------------------------
 [loss] train_loss: {train_loss}
-[loss] train_ref_loss: {train_ref_loss}
 [loss] train_lang_loss: {train_lang_loss}
-[loss] train_cap_loss: {train_cap_loss}
-[loss] train_ori_loss: {train_ori_loss}
-[loss] train_dist_loss: {train_dist_loss}
-[loss] train_objectness_loss: {train_objectness_loss}
-[loss] train_vote_loss: {train_vote_loss}
-[loss] train_box_loss: {train_box_loss}
 [loss] train_weak_loss: {train_weak_loss}
+[loss] train_rec_loss: {train_rec_loss}
 [loss] train_lang_acc: {train_lang_acc}
 [sco.] train_ref_acc: {train_ref_acc}
-[sco.] train_cap_acc: {train_cap_acc}
-[sco.] train_ori_acc: {train_ori_acc}
 [sco.] train_obj_acc: {train_obj_acc}
 [sco.] train_sem_acc: {train_sem_acc}
-[sco.] train_pred_ious: {train_pred_ious}
 [sco.] train_pos_ratio: {train_pos_ratio}, train_neg_ratio: {train_neg_ratio}
 [sco.] train_iou_0.1: {train_iou_1}, train_iou_0.25: {train_iou_25}, train_iou_0.5: {train_iou_5}
 [sco.] train_iou_max_0.1: {train_iou_max_1}, train_iou_max_0.25: {train_iou_max_25}, train_iou_max_0.5: {train_iou_max_5}
@@ -56,12 +47,9 @@ ITER_REPORT_TEMPLATE = """
 EPOCH_REPORT_TEMPLATE = """
 ---------------------------------summary---------------------------------
 [train] train_loss: {train_loss}
-[train] train_ref_loss: {train_ref_loss}
 [train] train_lang_loss: {train_lang_loss}
-[train] train_objectness_loss: {train_objectness_loss}
-[train] train_vote_loss: {train_vote_loss}
-[train] train_box_loss: {train_box_loss}
 [train] train_weak_loss: {train_weak_loss}
+[train] train_rec_loss: {train_rec_loss}
 [train] train_lang_acc: {train_lang_acc}
 [train] train_ref_acc: {train_ref_acc}
 [train] train_obj_acc: {train_obj_acc}
@@ -70,12 +58,9 @@ EPOCH_REPORT_TEMPLATE = """
 [train] train_iou_0.1: {train_iou_1}, train_iou_0.25: {train_iou_25}, train_iou_0.5: {train_iou_5}
 [train] train_max_iou_0.1: {train_max_iou_1}, train_max_iou_0.25: {train_max_iou_25}, train_max_iou_0.5: {train_max_iou_5}
 [val]   val_loss: {val_loss}
-[val]   val_ref_loss: {val_ref_loss}
 [val]   val_lang_loss: {val_lang_loss}
-[val]   val_objectness_loss: {val_objectness_loss}
-[val]   val_vote_loss: {val_vote_loss}
-[val]   val_box_loss: {val_box_loss}
 [val]   val_weak_loss: {val_weak_loss}
+[val]   val_rec_loss: {val_rec_loss}
 [val]   val_lang_acc: {val_lang_acc}
 [val]   val_ref_acc: {val_ref_acc}
 [val]   val_obj_acc: {val_obj_acc}
@@ -269,84 +254,12 @@ class Solver():
 
     def _reset_log(self, phase):
         self.log[phase] = defaultdict(list)
-        # if phase == "train":
-        #     self.log[phase] = {
-        #         # info
-        #         "forward": [],
-        #         "backward": [],
-        #         "eval": [],
-        #         "fetch": [],
-        #         "iter_time": [],
-        #         "real_time": [],
-        #         # loss (float, not torch.cuda.FloatTensor)
-        #         "loss": [],
-        #         "ref_loss": [],
-        #         "lang_loss": [],
-        #         "cap_loss": [],
-        #         "ori_loss": [],
-        #         "dist_loss": [],
-        #         "objectness_loss": [],
-        #         "vote_loss": [],
-        #         "box_loss": [],
-        #         # scores (float, not torch.cuda.FloatTensor)
-        #         "lang_acc": [],
-        #         "ref_acc": [],
-        #         "cap_acc": [],
-        #         "ori_acc": [],
-        #         "obj_acc": [],
-        #         "sem_acc": [],
-        #         "pred_ious": [],
-        #         "pos_ratio": [],
-        #         "neg_ratio": [],
-        #         "iou_0.1": [],
-        #         "iou_0.25": [],
-        #         "iou_0.5": [],
-        #         "max_iou_0.1": [],
-        #         "max_iou_0.25": [],
-        #         "max_iou_0.5": [],
-        #     }
-        # else:
-        #     self.log[phase] = {
-        #         # info
-        #         "forward": [],
-        #         "backward": [],
-        #         "eval": [],
-        #         "fetch": [],
-        #         "iter_time": [],
-        #         "real_time": [],
-        #         # loss (float, not torch.cuda.FloatTensor)
-        #         "loss": [],
-        #         "ref_loss": [],
-        #         "lang_loss": [],
-        #         "cap_loss": [],
-        #         "ori_loss": [],
-        #         "dist_loss": [],
-        #         "objectness_loss": [],
-        #         "vote_loss": [],
-        #         "box_loss": [],
-        #         # scores (float, not torch.cuda.FloatTensor)
-        #         "lang_acc": [],
-        #         "ref_acc": [],
-        #         "cap_acc": [],
-        #         "ori_acc": [],
-        #         "obj_acc": [],
-        #         "sem_acc": [],
-        #         "pred_ious": [],
-        #         "pos_ratio": [],
-        #         "neg_ratio": [],
-        #         "iou_0.1": [],
-        #         "iou_0.25": [],
-        #         "iou_0.5": [],
-        #         "max_iou_0.1": [],
-        #         "max_iou_0.25": [],
-        #         "max_iou_0.5": []
-        #     }
 
     def _dump_log(self, phase, is_eval=False):
         if phase == "train" and not is_eval:
             log = {
-                "loss": ["loss", "ref_loss", "lang_loss", "cap_loss", "ori_loss", "dist_loss", "objectness_loss", "vote_loss", "box_loss", "weak_loss"],
-                "score": ["lang_acc", "ref_acc", "cap_acc", "ori_acc", "obj_acc", "sem_acc", "pred_ious", "pos_ratio", "neg_ratio", "iou_0.1", "iou_0.25", "iou_0.5", "max_iou_0.1", "max_iou_0.25", "max_iou_0.5"]
+                "loss": ["loss", "lang_loss", "weak_loss", "rec_loss"],
+                "score": ["lang_acc", "ref_acc", "obj_acc", "sem_acc", "pos_ratio", "neg_ratio", "iou_0.1", "iou_0.25", "iou_0.5", "max_iou_0.1", "max_iou_0.25", "max_iou_0.5"]
             }
             for key in log:
                 for item in log[key]:
@@ -408,26 +321,10 @@ class Solver():
         )
 
         # store loss
-        self._running_log["ref_loss"] = data_dict["ref_loss"]
         self._running_log["lang_loss"] = data_dict["lang_loss"]
-        self._running_log["cap_loss"] = data_dict["cap_loss"]
-        self._running_log["ori_loss"] = data_dict["ori_loss"]
-        self._running_log["dist_loss"] = data_dict["dist_loss"]
-        self._running_log["objectness_loss"] = data_dict["objectness_loss"]
-        self._running_log["vote_loss"] = data_dict["vote_loss"]
-        self._running_log["box_loss"] = data_dict["box_loss"]
         self._running_log["weak_loss"] = data_dict["weak_loss"]
+        self._running_log["rec_loss"] = data_dict["rec_loss"]
         self._running_log["loss"] = data_dict["loss"]
-
-        # store eval
-        self._running_log["cap_acc"] = data_dict["cap_acc"].item()
-        self._running_log["ori_acc"] = data_dict["ori_acc"].item()
-        self._running_log["pred_ious"] = data_dict["pred_ious"].item()
-        #self._running_log["obj_acc"] = data_dict["obj_acc"].item()
-        #self._running_log["pos_ratio"] = data_dict["pos_ratio"].item()
-        #self._running_log["neg_ratio"] = data_dict["neg_ratio"].item()
-        #self._running_log["max_iou_0.25"] = np.mean(data_dict["max_iou_0.25"])
-        #self._running_log["max_iou_0.5"] = np.mean(data_dict["max_iou_0.5"])
 
 
     def _ground_eval(self, data_dict, phase, is_eval):
@@ -486,15 +383,6 @@ class Solver():
             self._running_log["max_iou_0.25"] = 0
             self._running_log["max_iou_0.5"] = 0
 
-    # def _eval(self, phase, epoch):
-    #     self.log[phase]["bleu-1"] = 0
-    #     self.log[phase]["bleu-2"] = 0
-    #     self.log[phase]["bleu-3"] = 0
-    #     self.log[phase]["bleu-4"] = 0
-    #     self.log[phase]["cider"] = 0
-    #     self.log[phase]["rouge"] = 0
-    #     self.log[phase]["meteor"] = 0
-
     def _feed(self, dataloader, phase, epoch_id, is_eval=False):
         # switch mode
         if is_eval:
@@ -533,8 +421,6 @@ class Solver():
         # enter mode
         start_solver = time.time()
         if not is_eval:
-        #if True:
-        #if (not is_eval) or phase == "val":
             for data_dict in dataloader:
                 # move to cuda
                 for key in data_dict:
@@ -542,34 +428,7 @@ class Solver():
                     data_dict[key] = data_dict[key].to(self.device)
 
                 # initialize the running loss
-                self._running_log = {
-                    # # loss
-                    # "loss": 0,
-                    # "ref_loss": 0,
-                    # "lang_loss": 0,
-                    # "cap_loss": 0,
-                    # "ori_loss": 0,
-                    # "dist_loss": 0,
-                    # "objectness_loss": 0,
-                    # "vote_loss": 0,
-                    # "box_loss": 0,
-                    # # acc
-                    # "sem_acc": 0,
-                    # "lang_acc": 0,
-                    # "ref_acc": 0,
-                    # "cap_acc": 0,
-                    # "ori_acc": 0,
-                    # "obj_acc": 0,
-                    # "pred_ious": 0,
-                    # "pos_ratio": 0,
-                    # "neg_ratio": 0,
-                    # "iou_0.1": 0,
-                    # "iou_0.25": 0,
-                    # "iou_0.5": 0,
-                    # "max_iou_0.1": 0,
-                    # "max_iou_0.25": 0,
-                    # "max_iou_0.5": 0
-                }
+                self._running_log = {}
 
                 # load
                 self.log[phase]["fetch"].append(data_dict["load_time"].sum().item())
@@ -604,23 +463,13 @@ class Solver():
 
                 # record log
                 self.log[phase]["loss"].append(self._running_log["loss"].item())
-                self.log[phase]["ref_loss"].append(self._running_log["ref_loss"].item())
                 self.log[phase]["lang_loss"].append(self._running_log["lang_loss"].item())
-                self.log[phase]["cap_loss"].append(self._running_log["cap_loss"].item())
-                self.log[phase]["ori_loss"].append(self._running_log["ori_loss"].item())
-                self.log[phase]["dist_loss"].append(self._running_log["dist_loss"].item())
-                self.log[phase]["objectness_loss"].append(self._running_log["objectness_loss"].item())
-                self.log[phase]["vote_loss"].append(self._running_log["vote_loss"].item())
-                self.log[phase]["box_loss"].append(self._running_log["box_loss"].item())
                 self.log[phase]["weak_loss"].append(self._running_log["weak_loss"].item())
-
+                self.log[phase]["rec_loss"].append(self._running_log["rec_loss"].item())
                 self.log[phase]["sem_acc"].append(self._running_log["sem_acc"])
                 self.log[phase]["lang_acc"].append(self._running_log["lang_acc"])
                 self.log[phase]["ref_acc"].append(self._running_log["ref_acc"])
-                self.log[phase]["cap_acc"].append(self._running_log["cap_acc"])
-                self.log[phase]["ori_acc"].append(self._running_log["ori_acc"])
                 self.log[phase]["obj_acc"].append(self._running_log["obj_acc"])
-                self.log[phase]["pred_ious"].append(self._running_log["pred_ious"])
                 self.log[phase]["pos_ratio"].append(self._running_log["pos_ratio"])
                 self.log[phase]["neg_ratio"].append(self._running_log["neg_ratio"])
                 self.log[phase]["iou_0.1"].append(self._running_log["iou_0.1"])
@@ -678,27 +527,7 @@ class Solver():
                         data_dict[key] = data_dict[key].to(self.device)
 
                     # initialize the running loss
-                    self._running_log = {
-                        # # loss
-                        # "loss": 0,
-                        # "ref_loss": 0,
-                        # "lang_loss": 0,
-                        # "objectness_loss": 0,
-                        # "vote_loss": 0,
-                        # "box_loss": 0,
-                        # # acc
-                        # "lang_acc": 0,
-                        # "ref_acc": 0,
-                        # "obj_acc": 0,
-                        # "sem_acc": 0,
-                        # "pos_ratio": 0,
-                        # "neg_ratio": 0,
-                        # "iou_0.1": 0,
-                        # "iou_0.25": 0,
-                        # "iou_0.5": 0,
-                        # "max_iou_0.25": 0,
-                        # "max_iou_0.5": 0
-                    }
+                    self._running_log = {}
 
                     data_dict["epoch"] = epoch_id
                     data_dict = self._forward(data_dict)
@@ -710,12 +539,9 @@ class Solver():
                     if phase == "val":
                         # record log
                         self.log[phase]["loss"].append(self._running_log["loss"].item())
-                        self.log[phase]["ref_loss"].append(self._running_log["ref_loss"].item())
                         self.log[phase]["lang_loss"].append(self._running_log["lang_loss"].item())
-                        self.log[phase]["objectness_loss"].append(self._running_log["objectness_loss"].item())
-                        self.log[phase]["vote_loss"].append(self._running_log["vote_loss"].item())
-                        self.log[phase]["box_loss"].append(self._running_log["box_loss"].item())
                         self.log[phase]["weak_loss"].append(self._running_log["weak_loss"].item())
+                        self.log[phase]["rec_loss"].append(self._running_log["rec_loss"].item())
                         self.log[phase]["lang_acc"].append(self._running_log["lang_acc"])
                         self.log[phase]["ref_acc"].append(self._running_log["ref_acc"])
                         self.log[phase]["obj_acc"].append(self._running_log["obj_acc"])
@@ -810,19 +636,11 @@ class Solver():
             iter_id=self._global_iter_id + 1,
             total_iter=self._total_iter["train"],
             train_loss=round(np.mean([v for v in self.log["train"]["loss"]]), 5),
-            train_ref_loss=round(np.mean([v for v in self.log["train"]["ref_loss"]]), 5),
             train_lang_loss=round(np.mean([v for v in self.log["train"]["lang_loss"]]), 5),
-            train_cap_loss=round(np.mean([v for v in self.log["train"]["cap_loss"]]), 5),
-            train_ori_loss=round(np.mean([v for v in self.log["train"]["ori_loss"]]), 5),
-            train_dist_loss=round(np.mean([v for v in self.log["train"]["dist_loss"]]), 5),
-            train_objectness_loss=round(np.mean([v for v in self.log["train"]["objectness_loss"]]), 5),
-            train_vote_loss=round(np.mean([v for v in self.log["train"]["vote_loss"]]), 5),
-            train_box_loss=round(np.mean([v for v in self.log["train"]["box_loss"]]), 5),
             train_weak_loss=round(np.mean([v for v in self.log["train"]["weak_loss"]]), 5),
+            train_rec_loss=round(np.mean([v for v in self.log["train"]["rec_loss"]]), 5),
             train_lang_acc=round(np.mean([v for v in self.log["train"]["lang_acc"]]), 5),
             train_ref_acc=round(np.mean([v for v in self.log["train"]["ref_acc"]]), 5),
-            train_cap_acc=round(np.mean([v for v in self.log["train"]["cap_acc"]]), 5),
-            train_ori_acc=round(np.mean([v for v in self.log["train"]["ori_acc"]]), 5),
             train_obj_acc=round(np.mean([v for v in self.log["train"]["obj_acc"]]), 5),
             train_sem_acc=round(np.mean([v for v in self.log["train"]["sem_acc"]]), 5),
             train_iou_1=round(np.mean([v for v in self.log["train"]["iou_0.1"]]), 5),
@@ -833,7 +651,6 @@ class Solver():
             train_iou_max_5=round(np.mean([v for v in self.log["train"]["max_iou_0.5"]]), 5),
             train_pos_ratio=round(np.mean([v for v in self.log["train"]["pos_ratio"]]), 5),
             train_neg_ratio=round(np.mean([v for v in self.log["train"]["neg_ratio"]]), 5),
-            train_pred_ious=round(np.mean([v for v in self.log["train"]["pred_ious"]]), 5),
             mean_fetch_time=round(np.mean(fetch_time), 5),
             mean_forward_time=round(np.mean(forward_time), 5),
             mean_backward_time=round(np.mean(backward_time), 5),
@@ -858,12 +675,9 @@ class Solver():
             # train_rouge=round(self.log["train"]["rouge"], 5),
             # train_meteor=round(self.log["train"]["meteor"], 5),
             train_loss=round(np.mean([v for v in self.log["train"]["loss"]]), 5),
-            train_ref_loss=round(np.mean([v for v in self.log["train"]["ref_loss"]]), 5),
             train_lang_loss=round(np.mean([v for v in self.log["train"]["lang_loss"]]), 5),
-            train_objectness_loss=round(np.mean([v for v in self.log["train"]["objectness_loss"]]), 5),
-            train_vote_loss=round(np.mean([v for v in self.log["train"]["vote_loss"]]), 5),
-            train_box_loss=round(np.mean([v for v in self.log["train"]["box_loss"]]), 5),
             train_weak_loss=round(np.mean([v for v in self.log["train"]["weak_loss"]]), 5),
+            train_rec_loss=round(np.mean([v for v in self.log["train"]["rec_loss"]]), 5),
             train_lang_acc=round(np.mean([v for v in self.log["train"]["lang_acc"]]), 5),
             train_ref_acc=round(np.mean([v for v in self.log["train"]["ref_acc"]]), 5),
             train_obj_acc=round(np.mean([v for v in self.log["train"]["obj_acc"]]), 5),
@@ -884,12 +698,9 @@ class Solver():
             # val_rouge=round(self.log["val"]["rouge"], 5),
             # val_meteor=round(self.log["val"]["meteor"], 5),
             val_loss=round(np.mean([v for v in self.log["val"]["loss"]]), 5),
-            val_ref_loss=round(np.mean([v for v in self.log["val"]["ref_loss"]]), 5),
             val_lang_loss=round(np.mean([v for v in self.log["val"]["lang_loss"]]), 5),
-            val_objectness_loss=round(np.mean([v for v in self.log["val"]["objectness_loss"]]), 5),
-            val_vote_loss=round(np.mean([v for v in self.log["val"]["vote_loss"]]), 5),
-            val_box_loss=round(np.mean([v for v in self.log["val"]["box_loss"]]), 5),
             val_weak_loss=round(np.mean([v for v in self.log["val"]["weak_loss"]]), 5),
+            val_rec_loss=round(np.mean([v for v in self.log["val"]["rec_loss"]]), 5),
             val_lang_acc=round(np.mean([v for v in self.log["val"]["lang_acc"]]), 5),
             val_ref_acc=round(np.mean([v for v in self.log["val"]["ref_acc"]]), 5),
             val_obj_acc=round(np.mean([v for v in self.log["val"]["obj_acc"]]), 5),

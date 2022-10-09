@@ -52,26 +52,26 @@ def get_joint_loss(data_dict, device, config, weights,
     # heading_cls_loss, heading_reg_loss, size_distance_loss, sem_cls_loss = compute_box_and_sem_cls_loss(data_dict, config)
     # box_loss = 0.1 * heading_cls_loss + heading_reg_loss + 0.1 * sem_cls_loss
     # box_loss = box_loss + 20 * size_distance_loss
-    center_loss, heading_cls_loss, heading_reg_loss, size_cls_loss, size_reg_loss, sem_cls_loss = compute_box_and_sem_cls_loss(
-        data_dict, config)
-    # box_loss = center_loss + 0.1 * heading_cls_loss + heading_reg_loss + 0.1 * size_cls_loss + size_reg_loss
-    box_loss = center_loss + heading_reg_loss + size_reg_loss
-    # print(center_loss, heading_reg_loss, size_reg_loss)
-    # objectness; Nothing
-    obj_pred_val = torch.argmax(data_dict["objectness_scores"], 2) # B,K
-    obj_acc = torch.sum((obj_pred_val==data_dict["objectness_label"].long()).float()*data_dict["objectness_mask"])/(torch.sum(data_dict["objectness_mask"])+1e-6)
-    data_dict["obj_acc"] = obj_acc
-
-    data_dict["vote_loss"] = vote_loss
-    data_dict["objectness_loss"] = objectness_loss
-    data_dict["center_loss"] = center_loss
-    data_dict["heading_cls_loss"] = heading_cls_loss
-    data_dict["heading_reg_loss"] = heading_reg_loss
-    data_dict["size_cls_loss"] = size_cls_loss
-    data_dict["size_reg_loss"] = size_reg_loss
-    # data_dict["size_distance_loss"] = size_distance_loss
-    data_dict["sem_cls_loss"] = sem_cls_loss
-    data_dict["box_loss"] = box_loss
+    # center_loss, heading_cls_loss, heading_reg_loss, size_cls_loss, size_reg_loss, sem_cls_loss = compute_box_and_sem_cls_loss(
+    #     data_dict, config)
+    # # box_loss = center_loss + 0.1 * heading_cls_loss + heading_reg_loss + 0.1 * size_cls_loss + size_reg_loss
+    # box_loss = center_loss + heading_reg_loss + size_reg_loss
+    # # print(center_loss, heading_reg_loss, size_reg_loss)
+    # # objectness; Nothing
+    # obj_pred_val = torch.argmax(data_dict["objectness_scores"], 2) # B,K
+    # obj_acc = torch.sum((obj_pred_val==data_dict["objectness_label"].long()).float()*data_dict["objectness_mask"])/(torch.sum(data_dict["objectness_mask"])+1e-6)
+    # data_dict["obj_acc"] = obj_acc
+    #
+    # data_dict["vote_loss"] = vote_loss
+    # data_dict["objectness_loss"] = objectness_loss
+    # data_dict["center_loss"] = center_loss
+    # data_dict["heading_cls_loss"] = heading_cls_loss
+    # data_dict["heading_reg_loss"] = heading_reg_loss
+    # data_dict["size_cls_loss"] = size_cls_loss
+    # data_dict["size_reg_loss"] = size_reg_loss
+    # # data_dict["size_distance_loss"] = size_distance_loss
+    # data_dict["sem_cls_loss"] = sem_cls_loss
+    # data_dict["box_loss"] = box_loss
 
     # data_dict["ref_loss"] = torch.zeros(1)[0].cuda()
     # data_dict["cap_loss"] = torch.zeros(1)[0].to(device)
@@ -93,90 +93,29 @@ def get_joint_loss(data_dict, device, config, weights,
         rec_word_logits_i = rec_word_logits[:, :, i, :, :]
         rec_loss[:, i] = reconstruct_loss(rec_word_logits_i, gt_idx, masks_list)
     weak_loss = weakly_supervised_loss(target_obj_scores, rec_loss)
-    data_dict["rec_loss"] = rec_loss
+    data_dict["rec_loss"] = rec_loss.mean()
     data_dict["weak_loss"] = weak_loss
 
-    if reference:
-        # Reference loss
-        data_dict, ref_loss, _, cluster_labels = compute_reference_loss(data_dict, config)
-        data_dict["cluster_labels"] = cluster_labels
-        data_dict["ref_loss"] = ref_loss
-    else:
-        # raise NotImplementedError('Only detection; not implemented')
-        # # Reference loss
-        data_dict, ref_loss, _, cluster_labels = compute_reference_loss(data_dict, config, no_reference=True)
-        lang_count = data_dict['ref_center_label_list'].shape[1]
-        # data_dict["cluster_labels"] = objectness_label.new_zeros(objectness_label.shape).cuda().repeat(lang_count, 1)
-        data_dict["cluster_labels"] = cluster_labels
-        data_dict["cluster_ref"] = objectness_label.new_zeros(objectness_label.shape).float().cuda().repeat(lang_count, 1)
-        # store
-        data_dict["ref_loss"] = torch.zeros(1)[0].cuda()
-        # data_dict['max_iou_rate_0.25'] = 0
-        # data_dict['max_iou_rate_0.5'] = 0
+    data_dict, _, _, cluster_labels = compute_reference_loss(data_dict, config, no_reference=True)
+    # lang_count = data_dict['ref_center_label_list'].shape[1]
+    # data_dict["cluster_labels"] = objectness_label.new_zeros(objectness_label.shape).cuda().repeat(lang_count, 1)
+    data_dict["cluster_labels"] = cluster_labels
+    # print(data_dict["cluster_ref"][0])
+    # data_dict["cluster_ref"] = objectness_label.new_zeros(objectness_label.shape).float().cuda().repeat(lang_count, 1)
+    # print(data_dict["cluster_ref"][0])
 
     if reference and use_lang_classifier:
         data_dict["lang_loss"] = compute_lang_classification_loss(data_dict)
     else:
         data_dict["lang_loss"] = torch.zeros(1)[0].cuda()
 
-    if caption:
-        cap_loss, cap_acc = compute_cap_loss(data_dict, config, weights)
-
-        # store
-        data_dict["cap_loss"] = cap_loss
-        data_dict["cap_acc"] = cap_acc
-    else:
-        # store
-        data_dict["cap_loss"] = torch.zeros(1)[0].to(device)
-        data_dict["cap_acc"] = torch.zeros(1)[0].to(device)
-        data_dict["pred_ious"] =  torch.zeros(1)[0].to(device)
-
-    if orientation:
-        raise NotImplementedError()
-        ori_loss, ori_acc = compute_node_orientation_loss(data_dict, num_bins)
-
-        # store
-        data_dict["ori_loss"] = ori_loss
-        data_dict["ori_acc"] = ori_acc
-    else:
-        # store
-        data_dict["ori_loss"] = torch.zeros(1)[0].to(device)
-        data_dict["ori_acc"] = torch.zeros(1)[0].to(device)
-
-    if distance:
-        raise NotImplementedError()
-        dist_loss = compute_node_distance_loss(data_dict)
-
-        # store
-        data_dict["dist_loss"] = dist_loss
-    else:
-        # store
-        data_dict["dist_loss"] = torch.zeros(1)[0].to(device)
-
     # Final loss function
-    # loss = data_dict["vote_loss"] + 0.1 * data_dict["objectness_loss"] + data_dict["box_loss"] + 0.1*data_dict["sem_cls_loss"] + data_dict["cap_loss"]
-
-    # loss = data_dict["vote_loss"] + 0.1*data_dict["objectness_loss"] + data_dict["box_loss"] + 0.1*data_dict["sem_cls_loss"]  #sem_cls_loss加到box_loss里了
-    # loss = data_dict["vote_loss"] + 0.1*data_dict["objectness_loss"] + data_dict["box_loss"]
-    # loss *= 10 # amplify
-
     loss = torch.zeros(1)[0].to(device)
-    loss += weak_loss
-    # if caption and data_dict["epoch"] < num_ground_epoch:
-    #     loss += 0*data_dict["cap_loss"]
-    # elif caption:
-    #     loss += 0.2*data_dict["cap_loss"]
-    # if orientation:
-    #     loss += 0.1*data_dict["ori_loss"]
-    # if distance:
-    #     loss += 0.1*data_dict["dist_loss"]
-    # if reference:
-    #     loss += 0.3*data_dict["ref_loss"]
+    loss += data_dict["rec_loss"] + data_dict["weak_loss"]
     if use_lang_classifier:
         loss += 0.3*data_dict["lang_loss"]
 
     data_dict["loss"] = loss
-    # print(data_dict["vote_loss"], data_dict["objectness_loss"], data_dict["box_loss"], data_dict["loss"])
 
     return data_dict
 

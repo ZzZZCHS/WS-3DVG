@@ -448,10 +448,10 @@ if __name__ == "__main__":
     parser.add_argument("--wd", type=float, help="weight decay", default=1e-3)
     parser.add_argument("--amsgrad", action='store_true', help="optimizer with amsgrad")
 
-    parser.add_argument("--lang_num_max", type=int, help="lang num max", default=8)
+    parser.add_argument("--lang_num_max", type=int, help="lang num max", default=4)
     parser.add_argument("--num_points", type=int, default=40000, help="Point Number [default: 40000]")
     parser.add_argument("--num_proposals", type=int, default=256, help="Proposal number [default: 256]")
-    parser.add_argument("--num_target", type=int, default=8, help="Target proposal number [default: 32]")
+    parser.add_argument("--num_target", type=int, default=8, help="Target proposal number [default: 8]")
     parser.add_argument("--num_locals", type=int, default=20, help="Number of local objects [default: -1]")
     parser.add_argument("--num_scenes", type=int, default=-1, help="Number of scenes [default: -1]")
     parser.add_argument("--num_graph_steps", type=int, default=0, help="Number of graph conv layer [default: 0]")
