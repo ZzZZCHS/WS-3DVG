@@ -6,7 +6,7 @@ from models.transformer.transformers import Transformer
 
 class ReconstructModule(nn.Module):
     def __init__(self, vocab_size, emb_size=300, hidden_size=128, max_des_len=100, head=4,
-                 num_encoder_layers=3, num_decoder_layers=3):
+                 num_encoder_layers=1, num_decoder_layers=1):
         super().__init__()
         self.emb_size = emb_size
         self.hidden_size = hidden_size

@@ -283,8 +283,9 @@ class Solver():
                         np.mean([v for v in self.log[phase][item]]),
                         self._global_iter_id
                     )
-        # print(np.mean(self.log["val"]["iou_0.1"]), np.mean(self.log["val"]["iou_0.25"]), np.mean(self.log["val"]["iou_0.5"]))
-        # print(np.mean(self.log["val"]["sem_acc"]))
+        if is_eval:
+            print(np.mean(self.log["val"]["iou_0.1"]), np.mean(self.log["val"]["iou_0.25"]), np.mean(self.log["val"]["iou_0.5"]))
+
 
     def _set_phase(self, phase):
         if phase == "train":
@@ -435,11 +436,12 @@ class Solver():
 
                 # with torch.autograd.set_detect_anomaly(True):
                 # forward
-                # print("evaluating on val...")
-                # self._feed(self.dataloader["eval"]["val"], "val", epoch_id, is_eval=True)
-                # self._dump_log("val", True)
-                #
-                # sys.exit()
+
+                print("evaluating on val...")
+                self._feed(self.dataloader["eval"]["val"], "val", epoch_id, is_eval=True)
+                self._dump_log("val", True)
+
+                sys.exit()
 
                 data_dict["epoch"] = epoch_id
                 start = time.time()
@@ -499,9 +501,9 @@ class Solver():
                         new_val_step = self.val_step * 2
                     if self._global_iter_id % new_val_step == 0 and self._global_iter_id != 0:
                         # eval on train
-                        print("evaluating on train...")
-                        self._feed(self.dataloader["eval"]["train"], "train", epoch_id, is_eval=True)
-                        self._dump_log("train", True)
+                        # print("evaluating on train...")
+                        # self._feed(self.dataloader["eval"]["train"], "train", epoch_id, is_eval=True)
+                        # self._dump_log("train", True)
                         
                         # val
                         print("evaluating on val...")

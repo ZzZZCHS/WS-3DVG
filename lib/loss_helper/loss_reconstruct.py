@@ -15,13 +15,20 @@ def reconstruct_loss(logit, idx, mask, weights=None):
 
     eps = 0.1
     logit = logit.log_softmax(dim=-1)
+    # print(logit[0][0])
     nll_loss = -logit.gather(dim=-1, index=idx.unsqueeze(-1)).squeeze(-1)  # [bs * len_num_max, max_des_len]
     smooth_loss = -logit.sum(dim=-1)  # [bs * len_num_max, max_des_len]
+    # print(nll_loss[13], smooth_loss[13])
     nll_loss = (1 - eps) * nll_loss + eps / logit.size(-1) * smooth_loss
 
     nll_loss = nll_loss.masked_fill(mask == 0, 0)
     nll_loss = nll_loss.masked_fill(mask == 2, 0)
-    nll_loss = nll_loss.sum(dim=-1) / (mask == 1).int().sum(dim=-1)  # [bs * len_num_max]
+    nll_loss = nll_loss.sum(dim=-1) / ((mask == 1).int().sum(dim=-1) + 1e-7)  # [bs * len_num_max]
+    # if torch.isnan(nll_loss).any():
+        # print(logit[0][0][:100])
+        # print(nll_loss, smooth_loss)
+        # print(mask[13])
+        # print(nll_loss)
     # nll_loss = nll_loss.mean()
     return nll_loss.contiguous()
 

@@ -28,8 +28,7 @@ class LangModule(nn.Module):
         # language classifier
         if use_lang_classifier:
             self.lang_cls = nn.Sequential(
-                nn.Linear(lang_size, num_text_classes),
-                nn.Dropout()
+                nn.Linear(lang_size, num_text_classes)
             )
 
         self.fc = nn.Linear(256, 128)

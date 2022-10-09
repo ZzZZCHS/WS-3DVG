@@ -439,11 +439,12 @@ if __name__ == "__main__":
     parser.add_argument("--dataset", type=str, help="Choose a dataset: ScanRefer or ReferIt3D", default="ScanRefer")
     parser.add_argument("--gpu", type=str, help="gpu", default="0")
     parser.add_argument("--seed", type=int, default=3407, help="random seed")
+    parser.add_argument("--distribute", type=int, default=False, help="distributed training")
 
     parser.add_argument("--batch_size", type=int, help="batch size", default=4)
     parser.add_argument("--epoch", type=int, help="number of epochs", default=100)
     parser.add_argument("--verbose", type=int, help="iterations of showing verbose", default=50)
-    parser.add_argument("--val_step", type=int, help="iterations of validating", default=1000)
+    parser.add_argument("--val_step", type=int, help="iterations of validating", default=50)
     parser.add_argument("--lr", type=float, help="learning rate", default=2e-3)
     parser.add_argument("--wd", type=float, help="weight decay", default=1e-3)
     parser.add_argument("--amsgrad", action='store_true', help="optimizer with amsgrad")
@@ -503,5 +504,7 @@ if __name__ == "__main__":
     torch.backends.cudnn.deterministic = True
     # torch.use_deterministic_algorithms(True)
 
+    # if args.distribute:
+    #     torch.cuda.set_device()
     train(args)
     

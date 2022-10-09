@@ -46,7 +46,7 @@ def construct_bbox_corners(center, box_size):
 
 
 @torch.no_grad()
-def get_eval(data_dict, config, reference, use_lang_classifier=False, use_cat_rand=False,
+def get_eval(data_dict, config, reference, use_lang_classifier=False, use_cat_rand=True,
              use_best=False, post_processing=None, use_random=False):
     """ Loss functions
 
@@ -293,7 +293,7 @@ def get_eval(data_dict, config, reference, use_lang_classifier=False, use_cat_ra
     # print(ct1, ct2, ct3)
 
     # lang
-    if reference and use_lang_classifier:
+    if use_lang_classifier:
         object_cat = data_dict["object_cat_list"].reshape(batch_size*len_nun_max)
         data_dict["lang_acc"] = (torch.argmax(data_dict['lang_scores'], 1) == object_cat).float().mean()
     else:
@@ -310,7 +310,8 @@ def get_eval(data_dict, config, reference, use_lang_classifier=False, use_cat_ra
     data_dict["pred_bboxes"] = pred_bboxes
     data_dict["gt_bboxes"] = gt_bboxes
 
-    # print(data_dict["ref_iou_0.1"], data_dict["ref_iou_0.25"], data_dict["ref_iou_0.5"])
+    if use_cat_rand:
+        print(data_dict["ref_iou_0.1"], data_dict["ref_iou_0.25"], data_dict["ref_iou_0.5"])
     # --------------------------------------------
     # Some other statistics
     obj_pred_val = torch.argmax(data_dict['objectness_scores'], 2)  # B,K

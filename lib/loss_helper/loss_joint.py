@@ -91,8 +91,12 @@ def get_joint_loss(data_dict, device, config, weights,
     rec_loss = torch.zeros_like(target_obj_scores).to(target_obj_scores.device)
     for i in range(num_target):
         rec_word_logits_i = rec_word_logits[:, :, i, :, :]
+        # print(rec_word_logits_i[0][0][0])
         rec_loss[:, i] = reconstruct_loss(rec_word_logits_i, gt_idx, masks_list)
     weak_loss = weakly_supervised_loss(target_obj_scores, rec_loss)
+    if torch.isnan(rec_loss).any():
+        print(rec_loss)
+        sys.exit()
     data_dict["rec_loss"] = rec_loss.mean()
     data_dict["weak_loss"] = weak_loss
 
@@ -111,7 +115,7 @@ def get_joint_loss(data_dict, device, config, weights,
 
     # Final loss function
     loss = torch.zeros(1)[0].to(device)
-    loss += data_dict["rec_loss"] + data_dict["weak_loss"]
+    loss += 0.2 * data_dict["rec_loss"] + data_dict["weak_loss"]
     if use_lang_classifier:
         loss += 0.3*data_dict["lang_loss"]
 
