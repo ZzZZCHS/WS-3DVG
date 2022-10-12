@@ -6,20 +6,22 @@ from models.transformer.transformers import Transformer
 
 class ReconstructModule(nn.Module):
     def __init__(self, vocab_size, emb_size=300, hidden_size=128, max_des_len=100, head=4,
-                 num_encoder_layers=1, num_decoder_layers=1):
+                 num_encoder_layers=3, num_decoder_layers=3):
         super().__init__()
         self.emb_size = emb_size
         self.hidden_size = hidden_size
         self.vocab_size = vocab_size
 
-        self.mask_vec = nn.Parameter(torch.zeros(emb_size).float(), requires_grad=True)
+        self.mask_vec = torch.nn.Parameter(torch.empty(emb_size), requires_grad=True)
+        nn.init.xavier_normal_(self.mask_vec.unsqueeze(0))
+
         self.token_fc = nn.Linear(emb_size, hidden_size)
         self.word_fc = nn.Linear(emb_size, hidden_size)
 
         self.word_position = SinusoidalPositionalEmbedding(hidden_size, 0, max_des_len)
 
         self.reconstruct_trans = Transformer(hidden_size, num_heads=head, num_encoder_layers=num_encoder_layers,
-                                             num_decoder_layers=num_decoder_layers, dropout=0.05)
+                                             num_decoder_layers=num_decoder_layers, dropout=0.3)
         self.vocab_fc = nn.Linear(hidden_size, vocab_size)
 
     def forward(self, original_embs, object_feat, masks_list):
@@ -50,7 +52,7 @@ class ReconstructModule(nn.Module):
             words_feat: [bs, n, hidden_dim]
             mask_list: [bs, n]  #0:word  1:masked  2:padding
         """
-        token = self.mask_vec.cuda().unsqueeze(0).unsqueeze(0)
+        token = self.mask_vec.cuda().unsqueeze(0)
         token = self.token_fc(token)  # [bs, n, hidden_dim]
 
         masked_words_vec = words_feat.new_zeros(*words_feat.size()) + token

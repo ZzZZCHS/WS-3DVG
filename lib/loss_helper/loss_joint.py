@@ -13,7 +13,7 @@ from lib.configs.config_joint import CONF
 from .loss_detection import compute_vote_loss, compute_objectness_loss, compute_box_loss, compute_box_and_sem_cls_loss
 from .loss_captioning import compute_cap_loss
 from .loss_grounding import compute_reference_loss, compute_lang_classification_loss
-from .loss_reconstruct import reconstruct_loss, weakly_supervised_loss
+from .loss_reconstruct import reconstruct_loss, weakly_supervised_loss, reconstruct_score
 
 FAR_THRESHOLD = 0.3
 NEAR_THRESHOLD = 0.3
@@ -21,9 +21,7 @@ GT_VOTE_FACTOR = 3  # number of GT votes per point
 OBJECTNESS_CLS_WEIGHTS = [0.2, 0.8]  # put larger weights on positive objectness
 
 
-def get_joint_loss(data_dict, device, config, weights,
-    detection=True, caption=True, reference=True, use_lang_classifier=True,
-    orientation=False, distance=False, num_bins=CONF.TRAIN.NUM_BINS, num_ground_epoch=50):
+def get_joint_loss(data_dict, config, is_eval=False):
     """ Loss functions
 
     Args:
@@ -82,23 +80,27 @@ def get_joint_loss(data_dict, device, config, weights,
     # data_dict["dist_loss"] = torch.zeros(1)[0].to(device)
     # data_dict["lang_loss"] = torch.zeros(1)[0].cuda()
 
-    rec_word_logits = data_dict["rec_word_logits"]
-    gt_idx = data_dict["ground_lang_ids_list"]
-    masks_list = data_dict["all_masks_list"]
-    target_obj_scores = data_dict["target_scores"]
-    # print(rec_word_logits.shape, gt_idx.shape, masks_list.shape, target_obj_scores.shape)
-    num_target = target_obj_scores.shape[1]
-    rec_loss = torch.zeros_like(target_obj_scores).to(target_obj_scores.device)
-    for i in range(num_target):
-        rec_word_logits_i = rec_word_logits[:, :, i, :, :]
-        # print(rec_word_logits_i[0][0][0])
-        rec_loss[:, i] = reconstruct_loss(rec_word_logits_i, gt_idx, masks_list)
-    weak_loss = weakly_supervised_loss(target_obj_scores, rec_loss)
-    if torch.isnan(rec_loss).any():
-        print(rec_loss)
-        sys.exit()
-    data_dict["rec_loss"] = rec_loss.mean()
-    data_dict["weak_loss"] = weak_loss
+    if not is_eval:
+        rec_word_logits = data_dict["rec_word_logits"]
+        gt_idx = data_dict["ground_lang_ids_list"]
+        masks_list = data_dict["all_masks_list"]
+        target_obj_scores = data_dict["target_scores"]
+        all_scores = data_dict["cluster_ref"]
+        target_ids = data_dict["target_ids"].resize(*target_obj_scores.shape)
+        # print(rec_word_logits.shape, gt_idx.shape, masks_list.shape, target_obj_scores.shape)
+        num_target = target_obj_scores.shape[1]
+        rec_score = torch.zeros_like(target_obj_scores).to(target_obj_scores.device)
+        zeros = torch.zeros_like(target_ids).to(target_ids.device).float()
+        all_scores = all_scores.softmax(dim=-1)
+        all_scores = all_scores.scatter(dim=1, src=zeros, index=target_ids)
+        for i in range(num_target):
+            rec_word_logits_i = rec_word_logits[:, :, i, :, :]
+            # print(rec_word_logits_i[0][0][0])
+            rec_score[:, i] = reconstruct_score(rec_word_logits_i, gt_idx, masks_list)
+        weak_loss = weakly_supervised_loss(target_obj_scores, rec_score, all_scores, data_dict)
+        rec_loss = reconstruct_loss(rec_score)
+        data_dict["rec_loss"] = rec_loss
+        data_dict["weak_loss"] = weak_loss
 
     data_dict, _, _, cluster_labels = compute_reference_loss(data_dict, config, no_reference=True)
     # lang_count = data_dict['ref_center_label_list'].shape[1]
@@ -108,16 +110,17 @@ def get_joint_loss(data_dict, device, config, weights,
     # data_dict["cluster_ref"] = objectness_label.new_zeros(objectness_label.shape).float().cuda().repeat(lang_count, 1)
     # print(data_dict["cluster_ref"][0])
 
-    if reference and use_lang_classifier:
-        data_dict["lang_loss"] = compute_lang_classification_loss(data_dict)
-    else:
-        data_dict["lang_loss"] = torch.zeros(1)[0].cuda()
+    # if reference and use_lang_classifier:
+    #     data_dict["lang_loss"] = compute_lang_classification_loss(data_dict)
+    # else:
+    data_dict["lang_loss"] = torch.zeros(1)[0].cuda()
 
     # Final loss function
-    loss = torch.zeros(1)[0].to(device)
-    loss += 0.2 * data_dict["rec_loss"] + data_dict["weak_loss"]
-    if use_lang_classifier:
-        loss += 0.3*data_dict["lang_loss"]
+    loss = torch.zeros(1)[0].cuda()
+    if not is_eval:
+        loss += 0.2 * data_dict["rec_loss"] + 10 * data_dict["weak_loss"]
+    # if use_lang_classifier:
+    #     loss += data_dict["lang_loss"]
 
     data_dict["loss"] = loss
 

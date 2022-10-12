@@ -56,6 +56,10 @@ class ProposalModule(nn.Module):
         self.bn1 = torch.nn.BatchNorm1d(128)
         self.bn2 = torch.nn.BatchNorm1d(128)
 
+        # Fix VoteNet
+        for _p in self.parameters():
+            _p.requires_grad = False
+
         self.use_obj_embedding = True
         self.use_box_embedding = True
         self.bbox_embedding = nn.Linear(27, hidden_size)
@@ -219,7 +223,7 @@ class ProposalModule(nn.Module):
         non_objectness_masks = (objectness_preds_batch == 0).byte()  # bs, num_proposal
         non_objectness_masks = non_objectness_masks.unsqueeze(1).expand(-1, len_num_max, -1).resize(bs * len_num_max, num_proposal)
         # print(pred_by_target_cls[0])
-        pred_by_target_cls.masked_fill_(non_objectness_masks, -float('inf'))
+        pred_by_target_cls.masked_fill_(non_objectness_masks.bool(), -float('inf'))
         # print(pred_by_target_cls[0])
         target_ids = torch.topk(pred_by_target_cls, self.num_target, 1)[1]  # bs*len_num_max, num_target
         other_ids = torch.topk(pred_by_target_cls, num_proposal - self.num_target, 1, largest=False)[1]

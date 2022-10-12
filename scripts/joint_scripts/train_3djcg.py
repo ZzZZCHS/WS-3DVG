@@ -26,6 +26,7 @@ from lib.configs.config_joint import CONF
 from models.jointnet.jointnet import JointNet
 from scripts.utils.AdamW import AdamW
 from scripts.utils.script_utils import set_params_lr_dict
+from torch.nn.parallel import DistributedDataParallel
 
 from crash_on_ipy import *
 
@@ -38,8 +39,8 @@ SCANREFER_VAL = json.load(open(os.path.join(CONF.PATH.DATA, "ScanRefer_filtered_
 SCAN2CAD_ROTATION = None # json.load(open(os.path.join(CONF.PATH.SCAN2CAD, "scannet_instance_rotations.json")))
 
 # constants
-DC = SunToScannetDatasetConfig()
-# DC = ScannetDatasetConfig()
+# DC = SunToScannetDatasetConfig()
+DC = ScannetDatasetConfig()
 import crash_on_ipy
 
 
@@ -62,11 +63,25 @@ def get_dataloader(args, scanrefer, scanrefer_new, all_scene_list, split, config
         scan2cad_rotation=scan2cad_rotation
     )
     # dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
-    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
+
+    def my_worker_init_fn(worker_id):
+        np.random.seed(np.random.get_state()[1][0] + worker_id)
+
+    if args.distribute and split == "train":
+        sampler = torch.utils.data.distributed.DistributedSampler(dataset)
+        dataloader = torch.utils.data.DataLoader(dataset,
+                                                 batch_size=args.batch_size,
+                                                 shuffle=False,
+                                                 num_workers=1,
+                                                 worker_init_fn=my_worker_init_fn,
+                                                 sampler=sampler,
+                                                 drop_last=True)
+    else:
+        dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True if split == "train" else False, num_workers=1)
 
     return dataset, dataloader
 
-def get_model(args, dataset, device):
+def get_model(args, dataset):
     # initiate model
     # input_channels = int(args.use_multiview) * 128 + int(args.use_normal) * 3 + int(args.use_color) * 3 + int(not args.no_height)
     input_channels = int(not args.no_height)
@@ -89,7 +104,8 @@ def get_model(args, dataset, device):
         use_lang_classifier=(not args.no_lang_cls),
         use_bidir=args.use_bidir,
         no_reference=args.no_reference,
-        dataset_config=DC
+        dataset_config=DC,
+        args=args
     )
     """
     # load pretrained model
@@ -150,12 +166,15 @@ def get_model(args, dataset, device):
     model.lang.load_state_dict(pretrained_lang_weights)
 
     # multi-GPU
-    if torch.cuda.device_count() > 1:
-        print("using {} GPUs...".format(torch.cuda.device_count()))
-        model = torch.nn.DataParallel(model)
+    # if torch.cuda.device_count() > 1:
+    #     print("using {} GPUs...".format(torch.cuda.device_count()))
+    #     model = torch.nn.DataParallel(model)
 
     # to device
-    model.to(device)
+    model.cuda()
+
+    if args.distribute:
+        model = DistributedDataParallel(model, device_ids=[args.local_rank], broadcast_buffers=False, find_unused_parameters=True)
 
     return model
 
@@ -166,8 +185,8 @@ def get_num_params(model):
     return num_params
 
 def get_solver(args, dataset, dataloader):
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    model = get_model(args, dataset["train"], device)
+    # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model = get_model(args, dataset["train"])
     # TODO
     """
     weight_dict = {
@@ -225,8 +244,7 @@ def get_solver(args, dataset, dataloader):
     print('LR&BN_DECAY', LR_DECAY_STEP, LR_DECAY_RATE, BN_DECAY_STEP, BN_DECAY_RATE, flush=True)
     print("criterion", args.criterion, flush=True)
     solver = Solver(
-        model=model, 
-        device=device,
+        model=model,
         config=DC, 
         dataset=dataset,
         dataloader=dataloader, 
@@ -246,7 +264,9 @@ def get_solver(args, dataset, dataloader):
         bn_decay_step=BN_DECAY_STEP,
         bn_decay_rate=BN_DECAY_RATE,
         criterion=args.criterion,
-        checkpoint_best=checkpoint_best
+        checkpoint_best=checkpoint_best,
+        distributed_rank=args.local_rank if args.distribute else None,
+        opt_steps=args.opt_steps
     )
     num_params = get_num_params(model)
 
@@ -439,17 +459,19 @@ if __name__ == "__main__":
     parser.add_argument("--dataset", type=str, help="Choose a dataset: ScanRefer or ReferIt3D", default="ScanRefer")
     parser.add_argument("--gpu", type=str, help="gpu", default="0")
     parser.add_argument("--seed", type=int, default=3407, help="random seed")
-    parser.add_argument("--distribute", type=int, default=False, help="distributed training")
+    parser.add_argument("--distribute", action="store_true", help="distributed training")
+    parser.add_argument("--local_rank", type=int, help="local ran for DistributedDataParallel")
+    parser.add_argument("--opt_steps", type=int, default=1, help="optimizer steps")
 
     parser.add_argument("--batch_size", type=int, help="batch size", default=4)
     parser.add_argument("--epoch", type=int, help="number of epochs", default=100)
     parser.add_argument("--verbose", type=int, help="iterations of showing verbose", default=50)
-    parser.add_argument("--val_step", type=int, help="iterations of validating", default=50)
+    parser.add_argument("--val_step", type=int, help="iterations of validating", default=500)
     parser.add_argument("--lr", type=float, help="learning rate", default=2e-3)
     parser.add_argument("--wd", type=float, help="weight decay", default=1e-3)
     parser.add_argument("--amsgrad", action='store_true', help="optimizer with amsgrad")
 
-    parser.add_argument("--lang_num_max", type=int, help="lang num max", default=4)
+    parser.add_argument("--lang_num_max", type=int, help="lang num max", default=8)
     parser.add_argument("--num_points", type=int, default=40000, help="Point Number [default: 40000]")
     parser.add_argument("--num_proposals", type=int, default=256, help="Proposal number [default: 256]")
     parser.add_argument("--num_target", type=int, default=8, help="Target proposal number [default: 8]")
@@ -504,7 +526,9 @@ if __name__ == "__main__":
     torch.backends.cudnn.deterministic = True
     # torch.use_deterministic_algorithms(True)
 
-    # if args.distribute:
-    #     torch.cuda.set_device()
+    if args.distribute:
+        torch.cuda.set_device(args.local_rank)
+        torch.backends.cudnn.benchmark = False
+        torch.distributed.init_process_group(backend="nccl", init_method="env://")
+
     train(args)
-    

@@ -26,10 +26,9 @@ class LangModule(nn.Module):
         lang_size = hidden_size * 2 if self.use_bidir else hidden_size
 
         # language classifier
-        if use_lang_classifier:
-            self.lang_cls = nn.Sequential(
-                nn.Linear(lang_size, num_text_classes)
-            )
+        self.lang_cls = nn.Sequential(
+            nn.Linear(lang_size, num_text_classes)
+        )
 
         self.fc = nn.Linear(256, 128)
         self.dropout = nn.Dropout(p=.1)
@@ -42,6 +41,7 @@ class LangModule(nn.Module):
         """
         encode the input descriptions
         """
+        self.eval()
         word_embs = data_dict["ground_lang_feat_list"]  # B * 32 * MAX_DES_LEN * LEN(300)
         # print(word_embs.shape)
         lang_len = data_dict["ground_lang_len_list"]
@@ -104,8 +104,7 @@ class LangModule(nn.Module):
         # print("lang_last", lang_last.shape)
 
         # classify
-        if self.use_lang_classifier:
-            data_dict["lang_scores"] = self.lang_cls(data_dict["lang_emb"])
+        data_dict["lang_scores"] = self.lang_cls(data_dict["lang_emb"])
 
         return data_dict
 
