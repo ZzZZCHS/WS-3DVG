@@ -95,8 +95,8 @@ class ProposalModule(nn.Module):
         # data_dict = self.decode_scores(data_dict)
         # net = self.proposal(features)
         self.decode_scores(net, data_dict, self.num_class, self.num_heading_bin, self.num_size_cluster, self.mean_size_arr)
-        self.embed_feat(data_dict)
-        self.divide_proposals(data_dict)
+        # self.embed_feat(data_dict)
+        # self.divide_proposals(data_dict)
 
         return data_dict
 
@@ -169,70 +169,45 @@ class ProposalModule(nn.Module):
 
         self.decode_pred_box(data_dict)
 
-    def embed_feat(self, data_dict):
-        features = data_dict["pred_bbox_feature"].permute(0, 2, 1)
-        features = self.features_concat(features).permute(0, 2, 1)
-        batch_size, num_proposal = features.shape[:2]
+    # def embed_feat(self, data_dict):
+    #     features = data_dict["pred_bbox_feature"].permute(0, 2, 1)
+    #     features = self.features_concat(features).permute(0, 2, 1)
+    #     batch_size, num_proposal = features.shape[:2]
+    #
+    #     # multiview/rgb feature embedding
+    #     if self.use_obj_embedding:
+    #         obj_feat = data_dict["point_clouds"][..., 6:6 + 128].permute(0, 2, 1)
+    #         obj_feat_dim = obj_feat.shape[1]
+    #         obj_feat_id_seed = data_dict["seed_inds"]
+    #         obj_feat_id_seed = obj_feat_id_seed.long() + (
+    #             (torch.arange(batch_size) * obj_feat.shape[1])[:, None].to(obj_feat_id_seed.device))
+    #         obj_feat_id_seed = obj_feat_id_seed.reshape(-1)
+    #         obj_feat_id_vote = data_dict["aggregated_vote_inds"]
+    #         obj_feat_id_vote = obj_feat_id_vote.long() + (
+    #             (torch.arange(batch_size) * data_dict["seed_inds"].shape[1])[:, None].to(
+    #                 obj_feat_id_vote.device))
+    #         obj_feat_id_vote = obj_feat_id_vote.reshape(-1)
+    #         obj_feat_id = obj_feat_id_seed[obj_feat_id_vote]
+    #         obj_feat = obj_feat.reshape(-1, obj_feat_dim)[obj_feat_id].reshape(batch_size, num_proposal,
+    #                                                                            obj_feat_dim)
+    #         # print(obj_feat.size())
+    #         obj_embedding = self.obj_embedding(obj_feat)
+    #         features = features + obj_embedding * 0.1
+    #
+    #     # box embedding
+    #     if self.use_box_embedding:
+    #         corners = data_dict['pred_bbox_corner']
+    #         centers = get_bbox_centers(corners)  # batch_size, num_proposals, 3
+    #         num_proposals = centers.shape[1]
+    #         # attention weight
+    #         manual_bbox_feat = torch.cat(
+    #             [centers, (corners - centers[:, :, None, :]).reshape(batch_size, num_proposals, -1)],
+    #             dim=-1).float()
+    #         bbox_embedding = self.bbox_embedding(manual_bbox_feat)
+    #         features = features + bbox_embedding
+    #
+    #     data_dict["bbox_feature"] = features
 
-        # multiview/rgb feature embedding
-        if self.use_obj_embedding:
-            obj_feat = data_dict["point_clouds"][..., 6:6 + 128].permute(0, 2, 1)
-            obj_feat_dim = obj_feat.shape[1]
-            obj_feat_id_seed = data_dict["seed_inds"]
-            obj_feat_id_seed = obj_feat_id_seed.long() + (
-                (torch.arange(batch_size) * obj_feat.shape[1])[:, None].to(obj_feat_id_seed.device))
-            obj_feat_id_seed = obj_feat_id_seed.reshape(-1)
-            obj_feat_id_vote = data_dict["aggregated_vote_inds"]
-            obj_feat_id_vote = obj_feat_id_vote.long() + (
-                (torch.arange(batch_size) * data_dict["seed_inds"].shape[1])[:, None].to(
-                    obj_feat_id_vote.device))
-            obj_feat_id_vote = obj_feat_id_vote.reshape(-1)
-            obj_feat_id = obj_feat_id_seed[obj_feat_id_vote]
-            obj_feat = obj_feat.reshape(-1, obj_feat_dim)[obj_feat_id].reshape(batch_size, num_proposal,
-                                                                               obj_feat_dim)
-            # print(obj_feat.size())
-            obj_embedding = self.obj_embedding(obj_feat)
-            features = features + obj_embedding * 0.1
-
-        # box embedding
-        if self.use_box_embedding:
-            corners = data_dict['pred_bbox_corner']
-            centers = get_bbox_centers(corners)  # batch_size, num_proposals, 3
-            num_proposals = centers.shape[1]
-            # attention weight
-            manual_bbox_feat = torch.cat(
-                [centers, (corners - centers[:, :, None, :]).reshape(batch_size, num_proposals, -1)],
-                dim=-1).float()
-            bbox_embedding = self.bbox_embedding(manual_bbox_feat)
-            features = features + bbox_embedding
-
-        data_dict["bbox_feature"] = features
-
-    def divide_proposals(self, data_dict):
-        bbox_feature = data_dict["bbox_feature"]  # bs, num_proposal, hidden_dim
-        sem_cls_scores = data_dict["sem_cls_scores"]  # bs, num_proposal, 18
-        pred_lang_cat = torch.argmax(data_dict["lang_scores"], 1)  # bs*len_num_max
-        bs, num_proposal, hidden_dim = bbox_feature.size()
-        num_class = sem_cls_scores.shape[2]
-        len_num_max = pred_lang_cat.shape[0] // bs
-        bbox_feature = bbox_feature.unsqueeze(1).expand(-1, len_num_max, -1, -1).resize(bs * len_num_max, num_proposal, hidden_dim)
-        sem_cls_scores = data_dict["sem_cls_scores"].unsqueeze(1).expand(-1, len_num_max, -1, -1).resize(
-            bs * len_num_max, num_proposal, num_class)
-        pred_by_target_cls = torch.gather(sem_cls_scores, 2, pred_lang_cat.unsqueeze(-1).unsqueeze(-1).expand(-1, num_proposal, -1)).squeeze(-1)  # bs*len_num_max, num_proposal
-        objectness_preds_batch = torch.argmax(data_dict['objectness_scores'], 2).long()
-        non_objectness_masks = (objectness_preds_batch == 0).byte()  # bs, num_proposal
-        non_objectness_masks = non_objectness_masks.unsqueeze(1).expand(-1, len_num_max, -1).resize(bs * len_num_max, num_proposal)
-        # print(pred_by_target_cls[0])
-        pred_by_target_cls.masked_fill_(non_objectness_masks.bool(), -float('inf'))
-        # print(pred_by_target_cls[0])
-        target_ids = torch.topk(pred_by_target_cls, self.num_target, 1)[1]  # bs*len_num_max, num_target
-        other_ids = torch.topk(pred_by_target_cls, num_proposal - self.num_target, 1, largest=False)[1]
-        target_feat = torch.gather(bbox_feature, 1, target_ids.unsqueeze(-1).expand(-1, -1, hidden_dim))  # bs*len_num_max, num_target, hiddem_dim
-        other_feat = torch.gather(bbox_feature, 1, other_ids.unsqueeze(-1).expand(-1, -1, hidden_dim))
-        data_dict["target_ids"] = target_ids.resize(bs, len_num_max, self.num_target)
-        data_dict["other_ids"] = other_ids.resize(bs, len_num_max, num_proposal - self.num_target)
-        data_dict["target_feat"] = target_feat.resize(bs, len_num_max, self.num_target, hidden_dim)
-        data_dict["other_feat"] = other_feat.resize(bs, len_num_max, num_proposal - self.num_target, hidden_dim)
 
 
 def get_bbox_centers(corners):

@@ -498,11 +498,7 @@ class Solver():
                             self._train_report(epoch_id)
 
                         # evaluation
-                        if epoch_id >= self.num_ground_epoch:
-                            new_val_step = self.val_step // 2
-                        else:
-                            new_val_step = self.val_step * 2
-                        if self._global_iter_id % new_val_step == 0 and self._global_iter_id != 0:
+                        if self._global_iter_id % self.val_step == 0 and self._global_iter_id != 0:
                             # eval on train
                             # print("evaluating on train...")
                             # self._feed(self.dataloader["eval"]["train"], "train", epoch_id, is_eval=True)

@@ -44,28 +44,35 @@ def reconstruct_loss(rec_score):
     # rec_loss = rewards * rec_score
     return rec_score.mean()
 
-def weakly_supervised_loss(candidate_score, rec_score, all_score, data_dict):
+def weakly_supervised_loss(rec_score, all_score, data_dict):
     """
         candidate_score: [bs*len_num_max, n_candidate]
         rec_score: [bs*len_num_max, n_candidate]
     """
+    all_score = -all_score.log_softmax(dim=-1)
+    target_ids = data_dict["target_ids"].resize(*rec_score.shape)
+    candidate_score = torch.gather(all_score, -1, target_ids)
+
     n_candidate = candidate_score.shape[1]
-    if data_dict["epoch"] > 5:
-        rewards = torch.zeros(n_candidate).to(candidate_score.device)
-        rewards[n_candidate-1] = 1.
-    else:
-        rewards = torch.linspace(0, 1, n_candidate).to(candidate_score.device)  # pseudo-label by rec_loss
+    # if data_dict["epoch"] > 0:
+    #     rewards = torch.zeros(n_candidate).to(candidate_score.device)
+    #     rewards[n_candidate-1] = 1.
+    # else:
+    #     rewards = torch.linspace(0, 1, n_candidate).to(candidate_score.device)  # pseudo-label by rec_loss
+    rewards = torch.linspace(0.1, 1, n_candidate).to(candidate_score.device)
+    rewards = rewards**2
 
     idx = torch.argsort(rec_score, dim=-1, descending=True)
     _, idx = torch.sort(idx, dim=-1)
     rewards = rewards[idx]
-    grounding_loss = -(rewards * candidate_score.log_softmax(dim=-1)).mean()
+    # if data_dict["epoch"] == 0:
+    #     rewards = torch.linspace(1, 0, n_candidate).to(candidate_score.device)
+    grounding_loss = (rewards * candidate_score).mean()
+    # grounding_loss = -(rewards * candidate_score.log_softmax(dim=-1)).mean()
 
-    all_score = all_score.log_softmax(dim=-1)
-    target_ids = data_dict["target_ids"].resize(*rec_score.shape)
-    target_object_loss = -torch.gather(all_score, -1, target_ids).mean()
+    # target_object_loss = -torch.gather(all_score, -1, target_ids).mean()
 
-    weak_loss = grounding_loss + target_object_loss
+    weak_loss = grounding_loss
     data_dict["grounding_loss"] = grounding_loss
     return weak_loss
 

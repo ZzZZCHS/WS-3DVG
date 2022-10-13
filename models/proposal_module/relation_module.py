@@ -10,7 +10,7 @@ class RelationModule(nn.Module):
     def __init__(self, num_proposals=256, hidden_size=128, lang_num_size=300, det_channel=128, head=4, depth=2):
         super().__init__()
         self.use_box_embedding = True
-        self.use_dist_weight_matrix = True
+        self.use_dist_weight_matrix = False
         self.use_obj_embedding = True
 
         self.num_proposals = num_proposals
@@ -130,8 +130,8 @@ class RelationModule(nn.Module):
                                          way=attention_matrix_way)
         #    features = self.self_attn[i](features, features, features)
 
-        data_dict['dist_weights'] = dist_weights
-        data_dict['attention_matrix_way'] = attention_matrix_way
+        # data_dict['dist_weights'] = dist_weights
+        # data_dict['attention_matrix_way'] = attention_matrix_way
         data_dict["bbox_feature"] = features
         return data_dict
 

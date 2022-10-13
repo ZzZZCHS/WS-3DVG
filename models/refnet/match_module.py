@@ -41,6 +41,7 @@ class MatchModule(nn.Module):
         batch_size, num_proposal = features.shape[:2]
         len_num_max = data_dict["lang_feat_list"].shape[1]
         target_ids = data_dict["target_ids"].resize(batch_size*len_num_max, self.num_target)
+        # features = torch.gather(features, 1, target_ids.unsqueeze(-1).expand(-1, -1, features.shape[-1]))
 
         # objectness_masks = objectness_masks.permute(0, 2, 1).contiguous()  # batch_size, 1, num_proposals
         # data_dict["random"] = random.random()
@@ -83,7 +84,7 @@ class MatchModule(nn.Module):
 
         confidence1 = self.match(feature1_agg).squeeze(1)  # batch_size*len_num_max, num_target
         data_dict["cluster_ref"] = confidence1
-        data_dict["target_scores"] = torch.gather(confidence1, 1, target_ids.resize(batch_size * len_num_max, self.num_target))
+        data_dict["target_scores"] = torch.gather(confidence1, 1, target_ids)
 
         return data_dict
 

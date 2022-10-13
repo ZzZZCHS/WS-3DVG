@@ -246,6 +246,7 @@ def get_eval(data_dict, config, reference, use_lang_classifier=False, use_cat_ra
                     gt_bbox = get_3d_box(gt_obb[3:6], gt_obb[6], gt_obb[0:3])
                     max_iou = 0
                     for k in range(target_ids.shape[1]):
+                    # for k in range(2, 3):
                         # print(k, end="")
                     # for pred_ref_idx in range(256):
                         pred_ref_idx = target_ids[i*len_num_max+j][k]

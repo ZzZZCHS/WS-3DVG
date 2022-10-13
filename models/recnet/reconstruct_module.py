@@ -1,12 +1,12 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from models.transformer.transformers import Transformer
+from models.transformer.transformers import Transformer, TransformerDecoder
 
 
 class ReconstructModule(nn.Module):
     def __init__(self, vocab_size, emb_size=300, hidden_size=128, max_des_len=100, head=4,
-                 num_encoder_layers=3, num_decoder_layers=3):
+                 num_encoder_layers=2, num_decoder_layers=2):
         super().__init__()
         self.emb_size = emb_size
         self.hidden_size = hidden_size
@@ -20,8 +20,10 @@ class ReconstructModule(nn.Module):
 
         self.word_position = SinusoidalPositionalEmbedding(hidden_size, 0, max_des_len)
 
-        self.reconstruct_trans = Transformer(hidden_size, num_heads=head, num_encoder_layers=num_encoder_layers,
-                                             num_decoder_layers=num_decoder_layers, dropout=0.3)
+        # self.reconstruct_trans = Transformer(hidden_size, num_heads=head, num_encoder_layers=num_encoder_layers,
+        #                                      num_decoder_layers=num_decoder_layers, dropout=0.3)
+        self.reconstruct_trans = TransformerDecoder(num_layers=num_decoder_layers, d_model=hidden_size, num_heads=head, dropout=0.3)
+
         self.vocab_fc = nn.Linear(hidden_size, vocab_size)
 
     def forward(self, original_embs, object_feat, masks_list):
