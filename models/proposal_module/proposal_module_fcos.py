@@ -60,16 +60,16 @@ class ProposalModule(nn.Module):
         for _p in self.parameters():
             _p.requires_grad = False
 
-        self.use_obj_embedding = True
-        self.use_box_embedding = True
-        self.bbox_embedding = nn.Linear(27, hidden_size)
-        self.obj_embedding = nn.Linear(128, hidden_size)
-        self.features_concat = nn.Sequential(
-            nn.Conv1d(128, hidden_size, 1),
-            nn.BatchNorm1d(hidden_size),
-            nn.PReLU(hidden_size),
-            nn.Conv1d(hidden_size, hidden_size, 1),
-        )
+        # self.use_obj_embedding = True
+        # self.use_box_embedding = True
+        # self.bbox_embedding = nn.Linear(27, hidden_size)
+        # self.obj_embedding = nn.Linear(128, hidden_size)
+        # self.features_concat = nn.Sequential(
+        #     nn.Conv1d(128, hidden_size, 1),
+        #     nn.BatchNorm1d(hidden_size),
+        #     nn.PReLU(hidden_size),
+        #     nn.Conv1d(hidden_size, hidden_size, 1),
+        # )
 
     def forward(self, xyz, features, data_dict):
         """

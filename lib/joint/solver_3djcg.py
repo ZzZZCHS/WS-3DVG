@@ -35,6 +35,7 @@ ITER_REPORT_TEMPLATE = """
 [sco.] train_sem_acc: {train_sem_acc}
 [sco.] train_pos_ratio: {train_pos_ratio}, train_neg_ratio: {train_neg_ratio}
 [sco.] train_iou_0.1: {train_iou_1}, train_iou_0.25: {train_iou_25}, train_iou_0.5: {train_iou_5}
+[sco.] train_rec_iou_0.1: {train_rec_iou_1}, train_rec_iou_0.25: {train_rec_iou_25}, train_rec_iou_0.5: {train_rec_iou_5}
 [sco.] train_iou_max_0.1: {train_iou_max_1}, train_iou_max_0.25: {train_iou_max_25}, train_iou_max_0.5: {train_iou_max_5}
 [info] mean_fetch_time: {mean_fetch_time}s
 [info] mean_forward_time: {mean_forward_time}s
@@ -57,12 +58,14 @@ EPOCH_REPORT_TEMPLATE = """
 [train] train_sem_acc: {train_sem_acc}
 [train] train_pos_ratio: {train_pos_ratio}, train_neg_ratio: {train_neg_ratio}
 [train] train_iou_0.1: {train_iou_1}, train_iou_0.25: {train_iou_25}, train_iou_0.5: {train_iou_5}
+[sco.] train_rec_iou_0.1: {train_rec_iou_1}, train_rec_iou_0.25: {train_rec_iou_25}, train_rec_iou_0.5: {train_rec_iou_5}
 [train] train_max_iou_0.1: {train_max_iou_1}, train_max_iou_0.25: {train_max_iou_25}, train_max_iou_0.5: {train_max_iou_5}
 [val]   val_lang_acc: {val_lang_acc}
 [val]   val_obj_acc: {val_obj_acc}
 [val]   val_sem_acc: {val_sem_acc}
 [val]   val_pos_ratio: {val_pos_ratio}, val_neg_ratio: {val_neg_ratio}
 [val]   val_iou_0.1: {val_iou_1}, val_iou_0.25: {val_iou_25}, val_iou_0.5: {val_iou_5}
+[val]   val_rec_iou_0.1: {val_rec_iou_1}, val_rec_iou_0.25: {val_rec_iou_25}, val_rec_iou_0.5: {val_rec_iou_5}
 [val]   val_max_iou_0.1: {val_max_iou_1}, val_max_iou_0.25: {val_max_iou_25}, val_max_iou_0.5: {val_max_iou_5}
 """
 
@@ -73,6 +76,7 @@ BEST_REPORT_TEMPLATE = """
 [sco.]  sem_acc: {sem_acc}
 [sco.]  pos_ratio: {pos_ratio}, neg_ratio: {neg_ratio}
 [sco.]  iou_0.1: {iou_1}, iou_0.25: {iou_25}, iou_0.5: {iou_5}
+[sco.]  rec_iou_0.1: {rec_iou_1}, rec_iou_0.25: {rec_iou_25}, rec_iou_0.5: {rec_iou_5}
 """
 
 class Solver():
@@ -121,7 +125,10 @@ class Solver():
             "neg_ratio": -float("inf"),
             "iou_0.1": -float("inf"),
             "iou_0.25": -float("inf"),
-            "iou_0.5": -float("inf")
+            "iou_0.5": -float("inf"),
+            "rec_iou_0.1": -float("inf"),
+            "rec_iou_0.25": -float("inf"),
+            "rec_iou_0.5": -float("inf")
         } if checkpoint_best == None else checkpoint_best
 
         # init log
@@ -257,7 +264,9 @@ class Solver():
         if phase == "train" and not is_eval:
             log = {
                 "loss": ["loss", "lang_loss", "weak_loss", "rec_loss", "grounding_loss"],
-                "score": ["lang_acc", "obj_acc", "sem_acc", "pos_ratio", "neg_ratio", "iou_0.1", "iou_0.25", "iou_0.5", "max_iou_0.1", "max_iou_0.25", "max_iou_0.5"]
+                "score": ["lang_acc", "obj_acc", "sem_acc", "pos_ratio", "neg_ratio",
+                          "iou_0.1", "iou_0.25", "iou_0.5", "rec_iou_0.1", "rec_iou_0.25", "rec_iou_0.5",
+                          "max_iou_0.1", "max_iou_0.25", "max_iou_0.5"]
             }
             if self.distributed_rank and self.distributed_rank != 0:
                 return
@@ -273,8 +282,9 @@ class Solver():
         # eval
         if is_eval:
             ground_log = {
-                "score": ["lang_acc", "obj_acc", "pos_ratio", "neg_ratio", "sem_acc", "iou_0.1",
-                          "iou_0.25", "iou_0.5", "max_iou_0.1", "max_iou_0.25", "max_iou_0.5"]
+                "score": ["lang_acc", "obj_acc", "pos_ratio", "neg_ratio", "sem_acc",
+                          "iou_0.1", "iou_0.25", "iou_0.5", "rec_iou_0.1", "rec_iou_0.25", "rec_iou_0.5",
+                          "max_iou_0.1", "max_iou_0.25", "max_iou_0.5"]
             }
             if self.distributed_rank and self.distributed_rank != 0:
                 return
@@ -329,7 +339,8 @@ class Solver():
                 data_dict=data_dict,
                 config=self.config,
                 reference=self.reference,
-                use_lang_classifier=self.use_lang_classifier
+                use_lang_classifier=self.use_lang_classifier,
+                is_eval=is_eval
             )
             # dump
             self._running_log["lang_acc"] = data_dict["lang_acc"].item()
@@ -340,6 +351,9 @@ class Solver():
             self._running_log["iou_0.25"] = np.mean(data_dict["ref_iou_0.25"])
             self._running_log["iou_0.5"] = np.mean(data_dict["ref_iou_0.5"])
             self._running_log["iou_0.1"] = np.mean(data_dict["ref_iou_0.1"])
+            self._running_log["rec_iou_0.1"] = np.mean(data_dict["rec_iou_0.1"])
+            self._running_log["rec_iou_0.25"] = np.mean(data_dict["rec_iou_0.25"])
+            self._running_log["rec_iou_0.5"] = np.mean(data_dict["rec_iou_0.5"])
             self._running_log["max_iou_0.1"] = np.mean(data_dict["max_iou_0.1"])
             self._running_log["max_iou_0.25"] = np.mean(data_dict["max_iou_0.25"])
             self._running_log["max_iou_0.5"] = np.mean(data_dict["max_iou_0.5"])
@@ -349,7 +363,8 @@ class Solver():
                 data_dict=data_dict,
                 config=self.config,
                 reference=self.reference,
-                use_lang_classifier=self.use_lang_classifier
+                use_lang_classifier=self.use_lang_classifier,
+                is_eval=is_eval
             )
             # dump
             self._running_log["lang_acc"] = data_dict["lang_acc"].item()
@@ -360,6 +375,9 @@ class Solver():
             self._running_log["iou_0.25"] = np.mean(data_dict["ref_iou_0.25"])
             self._running_log["iou_0.5"] = np.mean(data_dict["ref_iou_0.5"])
             self._running_log["iou_0.1"] = np.mean(data_dict["ref_iou_0.1"])
+            self._running_log["rec_iou_0.1"] = np.mean(data_dict["rec_iou_0.1"])
+            self._running_log["rec_iou_0.25"] = np.mean(data_dict["rec_iou_0.25"])
+            self._running_log["rec_iou_0.5"] = np.mean(data_dict["rec_iou_0.5"])
             self._running_log["max_iou_0.1"] = np.mean(data_dict["max_iou_0.1"])
             self._running_log["max_iou_0.25"] = np.mean(data_dict["max_iou_0.25"])
             self._running_log["max_iou_0.5"] = np.mean(data_dict["max_iou_0.5"])
@@ -372,6 +390,9 @@ class Solver():
             self._running_log["iou_0.1"] = 0
             self._running_log["iou_0.25"] = 0
             self._running_log["iou_0.5"] = 0
+            self._running_log["rec_iou_0.1"] = 0
+            self._running_log["rec_iou_0.25"] = 0
+            self._running_log["rec_iou_0.5"] = 0
             self._running_log["max_iou_0.1"] = 0
             self._running_log["max_iou_0.25"] = 0
             self._running_log["max_iou_0.5"] = 0
@@ -480,6 +501,9 @@ class Solver():
                     self.log[phase]["iou_0.1"].append(self._running_log["iou_0.1"])
                     self.log[phase]["iou_0.25"].append(self._running_log["iou_0.25"])
                     self.log[phase]["iou_0.5"].append(self._running_log["iou_0.5"])
+                    self.log[phase]["rec_iou_0.1"].append(self._running_log["rec_iou_0.1"])
+                    self.log[phase]["rec_iou_0.25"].append(self._running_log["rec_iou_0.25"])
+                    self.log[phase]["rec_iou_0.5"].append(self._running_log["rec_iou_0.5"])
                     self.log[phase]["max_iou_0.1"].append(self._running_log["max_iou_0.1"])
                     self.log[phase]["max_iou_0.25"].append(self._running_log["max_iou_0.25"])
                     self.log[phase]["max_iou_0.5"].append(self._running_log["max_iou_0.5"])
@@ -546,6 +570,9 @@ class Solver():
                     self.log[phase]["iou_0.1"].append(self._running_log["iou_0.1"])
                     self.log[phase]["iou_0.25"].append(self._running_log["iou_0.25"])
                     self.log[phase]["iou_0.5"].append(self._running_log["iou_0.5"])
+                    self.log[phase]["rec_iou_0.1"].append(self._running_log["rec_iou_0.1"])
+                    self.log[phase]["rec_iou_0.25"].append(self._running_log["rec_iou_0.25"])
+                    self.log[phase]["rec_iou_0.5"].append(self._running_log["rec_iou_0.5"])
                     self.log[phase]["max_iou_0.1"].append(self._running_log["max_iou_0.1"])
                     self.log[phase]["max_iou_0.25"].append(self._running_log["max_iou_0.25"])
                     self.log[phase]["max_iou_0.5"].append(self._running_log["max_iou_0.5"])
@@ -571,6 +598,9 @@ class Solver():
                 self.best["iou_0.1"] = np.mean(self.log[phase]["iou_0.1"])
                 self.best["iou_0.25"] = np.mean(self.log[phase]["iou_0.25"])
                 self.best["iou_0.5"] = np.mean(self.log[phase]["iou_0.5"])
+                self.best["rec_iou_0.1"] = np.mean(self.log[phase]["rec_iou_0.1"])
+                self.best["rec_iou_0.25"] = np.mean(self.log[phase]["rec_iou_0.25"])
+                self.best["rec_iou_0.5"] = np.mean(self.log[phase]["rec_iou_0.5"])
                 self.best["sum"] = cur_best
 
                 # save model
@@ -640,6 +670,9 @@ class Solver():
             train_iou_1=round(np.mean([v for v in self.log["train"]["iou_0.1"]]), 5),
             train_iou_25=round(np.mean([v for v in self.log["train"]["iou_0.25"]]), 5),
             train_iou_5=round(np.mean([v for v in self.log["train"]["iou_0.5"]]), 5),
+            train_rec_iou_1=round(np.mean([v for v in self.log["train"]["rec_iou_0.1"]]), 5),
+            train_rec_iou_25=round(np.mean([v for v in self.log["train"]["rec_iou_0.25"]]), 5),
+            train_rec_iou_5=round(np.mean([v for v in self.log["train"]["rec_iou_0.5"]]), 5),
             train_iou_max_1=round(np.mean([v for v in self.log["train"]["max_iou_0.1"]]), 5),
             train_iou_max_25=round(np.mean([v for v in self.log["train"]["max_iou_0.25"]]), 5),
             train_iou_max_5=round(np.mean([v for v in self.log["train"]["max_iou_0.5"]]), 5),
@@ -681,6 +714,9 @@ class Solver():
             train_iou_1=round(np.mean([v for v in self.log["train"]["iou_0.1"]]), 5),
             train_iou_25=round(np.mean([v for v in self.log["train"]["iou_0.25"]]), 5),
             train_iou_5=round(np.mean([v for v in self.log["train"]["iou_0.5"]]), 5),
+            train_rec_iou_1=round(np.mean([v for v in self.log["train"]["rec_iou_0.1"]]), 5),
+            train_rec_iou_25=round(np.mean([v for v in self.log["train"]["rec_iou_0.25"]]), 5),
+            train_rec_iou_5=round(np.mean([v for v in self.log["train"]["rec_iou_0.5"]]), 5),
             train_max_iou_1=round(np.mean([v for v in self.log["train"]["max_iou_0.1"]]), 5),
             train_max_iou_25=round(np.mean([v for v in self.log["train"]["max_iou_0.25"]]), 5),
             train_max_iou_5=round(np.mean([v for v in self.log["train"]["max_iou_0.5"]]), 5),
@@ -703,6 +739,9 @@ class Solver():
             val_iou_1=round(np.mean([v for v in self.log["val"]["iou_0.1"]]), 5),
             val_iou_25=round(np.mean([v for v in self.log["val"]["iou_0.25"]]), 5),
             val_iou_5=round(np.mean([v for v in self.log["val"]["iou_0.5"]]), 5),
+            val_rec_iou_1=round(np.mean([v for v in self.log["val"]["rec_iou_0.1"]]), 5),
+            val_rec_iou_25=round(np.mean([v for v in self.log["val"]["rec_iou_0.25"]]), 5),
+            val_rec_iou_5=round(np.mean([v for v in self.log["val"]["rec_iou_0.5"]]), 5),
             val_max_iou_1=round(np.mean([v for v in self.log["val"]["max_iou_0.1"]]), 5),
             val_max_iou_25=round(np.mean([v for v in self.log["val"]["max_iou_0.25"]]), 5),
             val_max_iou_5=round(np.mean([v for v in self.log["val"]["max_iou_0.5"]]), 5),
@@ -721,6 +760,9 @@ class Solver():
             iou_1=round(self.best["iou_0.1"], 5),
             iou_25=round(self.best["iou_0.25"], 5),
             iou_5=round(self.best["iou_0.5"], 5),
+            rec_iou_1=round(self.best["rec_iou_0.1"], 5),
+            rec_iou_25=round(self.best["rec_iou_0.25"], 5),
+            rec_iou_5=round(self.best["rec_iou_0.5"], 5)
         )
         self._log(best_report)
         with open(os.path.join(CONF.PATH.OUTPUT, self.stamp, "best.txt"), "w") as f:

@@ -17,7 +17,7 @@ from models.recnet.reconstruct_module import ReconstructModule
 
 class JointNet(nn.Module):
     def __init__(self, vocabulary, embeddings,
-                 input_feature_dim=0, num_proposal=128, num_target=32, num_rec_other=32, num_locals=-1, vote_factor=1, sampling="vote_fps",
+                 input_feature_dim=0, num_proposal=128, num_target=32, num_rec_other=16, num_locals=-1, vote_factor=1, sampling="vote_fps",
                  no_caption=False, use_topdown=False, query_mode="corner", num_graph_steps=0, use_relation=False,
                  use_lang_classifier=True, use_bidir=False, no_reference=False,
                  emb_size=300, ground_hidden_size=256, caption_hidden_size=512, dataset_config=None, args=None):
@@ -41,6 +41,7 @@ class JointNet(nn.Module):
         self.num_other = num_proposal - num_target
         self.num_rec_other = min(num_rec_other, self.num_other)
         self.vocab_size = len(vocabulary["idx2word"])
+        self.emb_size = emb_size
 
         # --------- PROPOSAL GENERATION ---------
         # Backbone point feature learning
@@ -59,8 +60,8 @@ class JointNet(nn.Module):
         self.relation = RelationModule(num_proposals=num_proposal, det_channel=128)  # bef 256
 
         self.lang = LangModule(dataset_config.num_class, use_lang_classifier, use_bidir, emb_size, ground_hidden_size)
-        for _p in self.lang.parameters():
-            _p.requires_grad = False
+        # for _p in self.lang.parameters():
+        #     _p.requires_grad = False
 
         self.recnet = ReconstructModule(vocab_size=self.vocab_size)
 
@@ -120,9 +121,10 @@ class JointNet(nn.Module):
         return data_dict
 
     def divide_proposals(self, data_dict):
-        bbox_feature = data_dict["bbox_feature"]  # bs, num_proposal, hidden_dim
+        bbox_feature = data_dict["pred_bbox_feature"]  # bs, num_proposal, hidden_dim
         sem_cls_scores = data_dict["sem_cls_scores"]  # bs, num_proposal, 18
-        pred_lang_cat = torch.argmax(data_dict["lang_scores"], 1)  # bs*len_num_max
+        # pred_lang_cat = torch.argmax(data_dict["lang_scores"], 1)  # bs*len_num_max
+        pred_lang_cat = self.lang.eval_lang_cls(data_dict)
         bs, num_proposal, hidden_dim = bbox_feature.size()
         num_class = sem_cls_scores.shape[2]
         len_num_max = pred_lang_cat.shape[0] // bs
@@ -151,9 +153,13 @@ class JointNet(nn.Module):
         other_feat = data_dict["other_feat"]
         target_ids = data_dict["target_ids"]  # bs, len_num_max, num_target
         other_ids = data_dict["other_ids"]
-        words_feat = data_dict["ground_lang_feat_list"]
+        # words_feat = data_dict["ground_lang_feat_list"]
+        words_feat = self.lang.masked_lang_feat(data_dict)
+        # print("words_feat", words_feat.shape)
         masks_list = data_dict["all_masks_list"]
         bs, len_num_max, _, hidden_dim = target_feat.shape
+        max_des_len = words_feat.shape[2]
+        masks_list = masks_list[:, :, :max_des_len]
         xyz = data_dict['aggregated_vote_xyz'].unsqueeze(1).expand(-1, len_num_max, -1, -1)  # bs, len_num_max, num_proposal, 3
         xyz = xyz.resize(bs*len_num_max, self.num_proposal, 3)
         target_ids = target_ids.resize(bs*len_num_max, self.num_target)
@@ -161,9 +167,9 @@ class JointNet(nn.Module):
         target_xyzs = torch.gather(xyz, dim=1, index=target_ids.unsqueeze(-1).expand(-1, -1, 3))  # bs*len_num_max, num_target, 3
         other_xyzs = torch.gather(xyz, dim=1, index=other_ids.unsqueeze(-1).expand(-1, -1, 3))
         other_feat = other_feat.resize(bs*len_num_max, self.num_other, hidden_dim)
-        max_des_len = words_feat.shape[2]
         device = target_feat.device
         word_logits = torch.zeros(bs, len_num_max, self.num_target, max_des_len, self.vocab_size).to(device)
+        # rec_word_feat = torch.zeros(bs, len_num_max, self.num_target, max_des_len, 128).to(device)
         for i in range(self.num_target):
             center_xyz = target_xyzs[:, i:i+1, :]  # bs*len_num_max, 1, 3
             dist = n_distance(center_xyz, other_xyzs)  # bs*len_num_max, num_other
@@ -172,8 +178,10 @@ class JointNet(nn.Module):
             object_feat = torch.cat((target_feat[:, :, i:i + 1, :], min_other_feat), dim=2)
             word_logit = self.recnet(words_feat, object_feat, masks_list)  # bs, len_num_max, max_des_len, vocab_size
             word_logits[:, :, i, :, :] = word_logit
+            # rec_word_feat[:, :, i, :, :] = self.recnet(words_feat, object_feat, masks_list)
 
         data_dict["rec_word_logits"] = word_logits
+        # data_dict["rec_word_feat"] = rec_word_feat
 
 
 def n_distance(center, points):

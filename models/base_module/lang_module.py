@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import random
 import copy
+import sys
 
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from models.transformer.attention import MultiHeadAttention
@@ -41,7 +42,7 @@ class LangModule(nn.Module):
         """
         encode the input descriptions
         """
-        self.eval()
+        # self.eval()
         word_embs = data_dict["ground_lang_feat_list"]  # B * 32 * MAX_DES_LEN * LEN(300)
         # print(word_embs.shape)
         lang_len = data_dict["ground_lang_len_list"]
@@ -49,12 +50,12 @@ class LangModule(nn.Module):
         #lang_len = data_dict["lang_len_list"]
         #word_embs = data_dict["main_lang_feat_list"]  # B * 32 * MAX_DES_LEN * LEN(300)
         #lang_len = data_dict["main_lang_len_list"]
-        batch_size, len_nun_max, max_des_len = word_embs.shape[:3]
+        batch_size, len_num_max, max_des_len = word_embs.shape[:3]
 
-        word_embs = word_embs.reshape(batch_size * len_nun_max, max_des_len, -1)
-        lang_len = lang_len.reshape(batch_size * len_nun_max)
-        first_obj = data_dict["ground_first_obj_list"].reshape(batch_size * len_nun_max)
-        #first_obj = data_dict["first_obj_list"].reshape(batch_size * len_nun_max)
+        word_embs = word_embs.reshape(batch_size * len_num_max, max_des_len, -1)
+        lang_len = lang_len.reshape(batch_size * len_num_max)
+        first_obj = data_dict["ground_first_obj_list"].reshape(batch_size * len_num_max)
+        #first_obj = data_dict["first_obj_list"].reshape(batch_size * len_num_max)
 
         # masking
         if data_dict["istrain"][0] == 1 and random.random() < 0.5:
@@ -108,3 +109,53 @@ class LangModule(nn.Module):
 
         return data_dict
 
+    def masked_lang_feat(self, data_dict):
+        with torch.no_grad():
+            self.eval()
+            word_embs = data_dict["ground_lang_feat_list"]  # B * 32 * MAX_DES_LEN * LEN(300)
+            lang_len = data_dict["ground_lang_len_list"]
+            batch_size, len_num_max, max_des_len = word_embs.shape[:3]
+            masks_list = data_dict["all_masks_list"]
+            masks_list = masks_list.reshape(batch_size * len_num_max, max_des_len)
+            word_embs = word_embs.reshape(batch_size * len_num_max, max_des_len, -1)
+            word_embs = word_embs.masked_fill(masks_list.unsqueeze(-1) == 1, 0.)
+            lang_len = lang_len.reshape(batch_size * len_num_max)
+
+            # lang_feat = pack_padded_sequence(word_embs, lang_len, batch_first=True, enforce_sorted=False)
+            lang_feat = pack_padded_sequence(word_embs, lang_len.cpu(), batch_first=True, enforce_sorted=False)
+
+            out, lang_last = self.gru(lang_feat)
+
+            padded = pad_packed_sequence(out, batch_first=True)
+            cap_emb, cap_len = padded
+            if self.use_bidir:
+                cap_emb = (cap_emb[:, :, :int(cap_emb.shape[2] / 2)] + cap_emb[:, :, int(cap_emb.shape[2] / 2):]) / 2
+
+            lang_fea = F.relu(self.fc(cap_emb))  # batch_size, n, hidden_size
+            lang_fea = self.dropout(lang_fea)
+            lang_fea = self.layer_norm(lang_fea).reshape(batch_size, len_num_max, lang_fea.shape[1], -1)
+            data_dict["enc_lang_feat"] = lang_fea
+            self.train()
+            return lang_fea
+
+    def eval_lang_cls(self, data_dict):
+        with torch.no_grad():
+            self.eval()
+            word_embs = data_dict["ground_lang_feat_list"]  # B * 32 * MAX_DES_LEN * LEN(300)
+            lang_len = data_dict["ground_lang_len_list"]
+            batch_size, len_num_max, max_des_len = word_embs.shape[:3]
+
+            word_embs = word_embs.reshape(batch_size * len_num_max, max_des_len, -1)
+            lang_len = lang_len.reshape(batch_size * len_num_max)
+
+            lang_feat = pack_padded_sequence(word_embs, lang_len.cpu(), batch_first=True, enforce_sorted=False)
+
+            out, lang_last = self.gru(lang_feat)
+
+            lang_last = lang_last.permute(1, 0, 2).contiguous().flatten(start_dim=1)  # batch_size, hidden_size * num_dir
+            # store the encoded language features
+
+            # classify
+            lang_score = self.lang_cls(lang_last)
+            self.train()
+            return torch.argmax(lang_score, 1)

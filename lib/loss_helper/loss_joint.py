@@ -83,10 +83,13 @@ def get_joint_loss(data_dict, config, is_eval=False):
     if not is_eval:
         rec_word_logits = data_dict["rec_word_logits"]
         gt_idx = data_dict["ground_lang_ids_list"]
+        # rec_word_feat = data_dict["rec_word_feat"]
+        # ori_feat = data_dict["ground_lang_feat_list"]
+        # ori_feat = data_dict["enc_lang_feat"]
         masks_list = data_dict["all_masks_list"]
         target_obj_scores = data_dict["target_scores"]
         all_scores = data_dict["cluster_ref"]
-        target_ids = data_dict["target_ids"].resize(*target_obj_scores.shape)
+        # target_ids = data_dict["target_ids"].resize(*target_obj_scores.shape)
         # print(rec_word_logits.shape, gt_idx.shape, masks_list.shape, target_obj_scores.shape)
         num_target = target_obj_scores.shape[1]
         rec_score = torch.zeros_like(target_obj_scores).to(target_obj_scores.device)
@@ -95,8 +98,10 @@ def get_joint_loss(data_dict, config, is_eval=False):
         # all_scores = all_scores.scatter(dim=1, src=zeros, index=target_ids)
         for i in range(num_target):
             rec_word_logits_i = rec_word_logits[:, :, i, :, :]
-            # print(rec_word_logits_i[0][0][0])
+            # rec_word_feat_i = rec_word_feat[:, :, i, :, :]
             rec_score[:, i] = reconstruct_score(rec_word_logits_i, gt_idx, masks_list)
+            # rec_score[:, i] = reconstruct_score(rec_word_feat_i, ori_feat, masks_list)
+        data_dict["rec_score"] = rec_score
         weak_loss = weakly_supervised_loss(rec_score, all_scores, data_dict)
         rec_loss = reconstruct_loss(rec_score)
         data_dict["rec_loss"] = rec_loss
@@ -113,12 +118,17 @@ def get_joint_loss(data_dict, config, is_eval=False):
     # if reference and use_lang_classifier:
     #     data_dict["lang_loss"] = compute_lang_classification_loss(data_dict)
     # else:
-    data_dict["lang_loss"] = torch.zeros(1)[0].cuda()
+    # data_dict["lang_loss"] = torch.zeros(1)[0].cuda()
+    data_dict["lang_loss"] = compute_lang_classification_loss(data_dict)
 
     # Final loss function
     loss = torch.zeros(1)[0].cuda()
     if not is_eval:
-        loss += 0.1 * data_dict["rec_loss"] + data_dict["weak_loss"]
+        loss += 3 * data_dict["lang_loss"]
+        if data_dict["epoch"] >= 3:
+            loss += data_dict["rec_loss"]
+        if data_dict["epoch"] >= 4:
+            loss += data_dict["weak_loss"]
     # if use_lang_classifier:
     #     loss += data_dict["lang_loss"]
 

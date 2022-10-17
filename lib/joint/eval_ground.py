@@ -46,7 +46,7 @@ def construct_bbox_corners(center, box_size):
 
 
 @torch.no_grad()
-def get_eval(data_dict, config, reference, use_lang_classifier=False, use_cat_rand=False,
+def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=False, use_cat_rand=False,
              use_best=False, post_processing=None, use_random=False, use_best_in_cat=False):
     """ Loss functions
 
@@ -108,6 +108,20 @@ def get_eval(data_dict, config, reference, use_lang_classifier=False, use_cat_ra
     target_object_mask.scatter_(1, target_ids, 1.)
     candidate_mask = pred_mask1 * target_object_mask  # bs * len_num_max, num_proposal
 
+    # torch.set_printoptions(precision=10)
+    if not is_eval:
+        rec_score = pred_mask1.new_zeros(*pred_mask1.size())
+        rec_score.scatter_(1, target_ids, data_dict["rec_score"])
+        max_score = torch.max(data_dict["rec_score"], dim=-1, keepdim=True)[0] + 1.
+        masked_pred_rec = rec_score * candidate_mask + rec_score * target_object_mask * 1e-7 + (1-candidate_mask) * max_score
+        pred_ref_rec = torch.argmin(masked_pred_rec, 1)
+        # print(masked_pred_rec[0])
+        # tmp = torch.sort(masked_pred_rec[0])
+        # print("sorted", tmp[0], tmp[1])
+        # print(candidate_mask[0])
+        # print(torch.arange(num_proposal)[candidate_mask[0].bool()])
+        # sys.exit()
+
     # store
     # data_dict["ref_acc"] = ref_acc.cpu().numpy().tolist()
     # ct = [0] * 18
@@ -121,9 +135,9 @@ def get_eval(data_dict, config, reference, use_lang_classifier=False, use_cat_ra
         cluster_preds = torch.zeros(bs*len_num_max, num_proposal).cuda()
         # print(cluster_preds.shape)
         for i in range(cluster_preds.shape[0]):
-            num_bbox = data_dict["num_bbox"][i // len_num_max]
-            sem_cls_label = data_dict["sem_cls_label"][i // len_num_max].detach().clone()
-            sem_cls_label[num_bbox:] -= 1
+            # num_bbox = data_dict["num_bbox"][i // len_num_max]
+            # sem_cls_label = data_dict["sem_cls_label"][i // len_num_max].detach().clone()
+            # sem_cls_label[num_bbox:] -= 1
             # candidate_masks = (sem_cls_pred[i // len_num_max] == pred_lang_cat[i])
             # for ii in sem_cls_pred[i // len_num_max]:
             #     ct[ii] += 1
@@ -143,17 +157,8 @@ def get_eval(data_dict, config, reference, use_lang_classifier=False, use_cat_ra
         # store the calibrated predictions and masks
         data_dict['cluster_ref'] = cluster_preds
     else:
-        #pred_ref = torch.argmax(data_dict['cluster_ref'], 1)  # (B,)
-        # pred_mask1 = pred_masks[0].repeat(len_num_max, 1)
-        # for i in range(batch_size):
-        #     if i != 0:
-        #         pred_mask = pred_masks[i].repeat(len_num_max, 1)
-        #         pred_mask1 = torch.cat([pred_mask1, pred_mask], dim=0)
-        masked_pred = data_dict['cluster_ref'] * pred_mask1 * target_object_mask + data_dict['cluster_ref'] * target_object_mask * 1e-7
+        masked_pred = data_dict['cluster_ref'] * candidate_mask + data_dict['cluster_ref'] * target_object_mask * 1e-7
         pred_ref = torch.argmax(masked_pred, 1)  # (B,)
-
-        # print((pred_mask1 * target_object_mask)[0])
-        # print(pred_ref)
         # store the calibrated predictions and masks
         #data_dict['cluster_ref'] = data_dict['cluster_ref'] * pred_masks
 
@@ -183,6 +188,12 @@ def get_eval(data_dict, config, reference, use_lang_classifier=False, use_cat_ra
     gt_bboxes = []
     #print("pred_ref", pred_ref.shape, gt_ref.shape)
     pred_ref = pred_ref.reshape(batch_size, len_num_max)
+    if not is_eval:
+        rec_ious = []
+        pred_ref_rec = pred_ref_rec.reshape(batch_size, len_num_max)
+
+    # print(target_ids[0:len_num_max], pred_ref[0], pred_ref_rec[0])
+
     if not use_best_in_cat:
         for i in range(batch_size):
             # compute the iou
@@ -215,6 +226,15 @@ def get_eval(data_dict, config, reference, use_lang_classifier=False, use_cat_ra
                     iou = eval_ref_one_sample(pred_bbox, gt_bbox)
                     pred_bbox = construct_bbox_corners(pred_center_ids, pred_box_size_ids)
                     ious.append(iou)
+
+                    if not is_eval:
+                        pred_ref_rec_idx = pred_ref_rec[i][j]
+                        pred_center_rec_ids = pred_center[i][pred_ref_rec_idx]
+                        pred_heading_rec_ids = pred_heading[i][pred_ref_rec_idx]
+                        pred_box_size_rec_ids = pred_box_size[i][pred_ref_rec_idx]
+                        pred_bbox_rec = get_3d_box(pred_box_size_rec_ids, pred_heading_rec_ids, pred_center_rec_ids)
+                        rec_iou = eval_ref_one_sample(pred_bbox_rec, gt_bbox)
+                        rec_ious.append(rec_iou)
 
                     # NOTE: get_3d_box() will return problematic bboxes
                     gt_bbox = construct_bbox_corners(gt_obb[0:3], gt_obb[3:6])
@@ -260,6 +280,7 @@ def get_eval(data_dict, config, reference, use_lang_classifier=False, use_cat_ra
                             max_iou = iou
                     # NOTE: get_3d_box() will return problematic bboxes
                     gt_bbox = construct_bbox_corners(gt_obb[0:3], gt_obb[3:6])
+                    # pred_bboxes.append(pred_bbox)
                     gt_bboxes.append(gt_bbox)
                     ious.append(max_iou)
 
@@ -283,6 +304,15 @@ def get_eval(data_dict, config, reference, use_lang_classifier=False, use_cat_ra
     data_dict["ref_iou_0.1"] = np.array(ious)[np.array(ious) >= 0.1].shape[0] / np.array(ious).shape[0]
     data_dict["ref_iou_0.25"] = np.array(ious)[np.array(ious) >= 0.25].shape[0] / np.array(ious).shape[0]
     data_dict["ref_iou_0.5"] = np.array(ious)[np.array(ious) >= 0.5].shape[0] / np.array(ious).shape[0]
+    if not is_eval:
+        data_dict["rec_iou_0.1"] = np.array(rec_ious)[np.array(rec_ious) >= 0.1].shape[0] / np.array(rec_ious).shape[0]
+        data_dict["rec_iou_0.25"] = np.array(rec_ious)[np.array(rec_ious) >= 0.25].shape[0] / np.array(rec_ious).shape[0]
+        data_dict["rec_iou_0.5"] = np.array(rec_ious)[np.array(rec_ious) >= 0.5].shape[0] / np.array(rec_ious).shape[0]
+    else:
+        data_dict["rec_iou_0.1"] = 0.
+        data_dict["rec_iou_0.25"] = 0.
+        data_dict["rec_iou_0.5"] = 0.
+
     data_dict["ref_multiple_mask"] = multiple
     data_dict["ref_others_mask"] = others
     data_dict["pred_bboxes"] = pred_bboxes

@@ -74,6 +74,7 @@ class MatchModule(nn.Module):
         feature1 = features[:, None, :, :].repeat(1, len_num_max, 1, 1).reshape(batch_size*len_num_max, num_proposal, -1)
         # feature1 = torch.gather(feature1, 1, target_ids.unsqueeze(-1).expand(-1, -1, feature1.shape[-1]))
         lang_fea = data_dict["lang_fea"]
+        # print("lang_fea", lang_fea.shape)
         # cross-attention
         feature1 = self.grounding_cross_attn(feature1, lang_fea, lang_fea, data_dict["attention_mask"])
 
@@ -82,7 +83,7 @@ class MatchModule(nn.Module):
         feature1_agg = feature1
         feature1_agg = feature1_agg.permute(0, 2, 1).contiguous()
 
-        confidence1 = self.match(feature1_agg).squeeze(1)  # batch_size*len_num_max, num_target
+        confidence1 = self.match(feature1_agg).squeeze(1)  # batch_size*len_num_max, num_proposal
         data_dict["cluster_ref"] = confidence1
         data_dict["target_scores"] = torch.gather(confidence1, 1, target_ids)
 
