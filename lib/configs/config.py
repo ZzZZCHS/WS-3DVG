@@ -63,4 +63,12 @@ CONF.PATH.GT_FEATURES = os.path.join(CONF.PATH.CLUSTER, "gt_{}_features") # data
 CONF.PATH.VOTENET_FEATURES = os.path.join(CONF.PATH.CLUSTER, "votenet_{}_predictions") # dataset
 
 CONF.PATH.VOTENET_PRETRAIN = os.path.join(CONF.PATH.PRETRAINED, "votenet", "pretrained_votenet_on_scannet.tar")
+CONF.PATH.GROUPFREE_PRETRAIN = os.path.join(CONF.PATH.PRETRAINED, "groupfree", "scannet_l6o256.pth")
+# CONF.PATH.GROUPFREE_PRETRAIN = os.path.join(CONF.PATH.PRETRAINED, "groupfree", "sunrgbd_l6o256_cls_agnostic.pth")
 CONF.PATH.LANGMODULE_PRETRAIN = os.path.join(CONF.PATH.PRETRAINED, "lang", "model.pth")
+
+CONF.PATH.PRETRAINED_TRAIN_DATA = os.path.join(CONF.PATH.PRETRAINED, "groupfree", "scannet_train_l6o256.pth")
+CONF.PATH.PRETRAINED_VAL_DATA = os.path.join(CONF.PATH.PRETRAINED, "groupfree", "scannet_val_l6o256.pth")
+# CONF.PATH.PRETRAINED_TRAIN_DATA = os.path.join(CONF.PATH.PRETRAINED, "groupfree", "sunrgbd_train_l6o256.pth")
+# CONF.PATH.PRETRAINED_VAL_DATA = os.path.join(CONF.PATH.PRETRAINED, "groupfree", "sunrgbd_val_l6o256.pth")
+

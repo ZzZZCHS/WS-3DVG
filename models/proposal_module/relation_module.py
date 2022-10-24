@@ -7,7 +7,7 @@ import random
 
 
 class RelationModule(nn.Module):
-    def __init__(self, num_proposals=256, hidden_size=128, lang_num_size=300, det_channel=128, head=4, depth=2):
+    def __init__(self, num_proposals=256, hidden_size=128, lang_num_size=300, det_channel=128, head=8, depth=2):
         super().__init__()
         self.use_box_embedding = True
         self.use_dist_weight_matrix = False
@@ -39,6 +39,8 @@ class RelationModule(nn.Module):
 
         self.bbox_embedding = nn.ModuleList(nn.Linear(27, hidden_size) for i in range(depth))
         self.obj_embedding = nn.ModuleList(nn.Linear(128, hidden_size) for i in range(depth))
+        self.dropout = nn.Dropout(p=0.1)
+        self.layer_norm = nn.LayerNorm(hidden_size)
 
 
     def _get_bbox_centers(self, corners):
@@ -51,7 +53,7 @@ class RelationModule(nn.Module):
         """
         Args:
             xyz: (B,K,3)
-            features: (B,C,K)
+            features: (B,K,C)
         Returns:
             scores: (B,num_proposal,2+3+NH*2+NS*4)
         """
@@ -101,7 +103,7 @@ class RelationModule(nn.Module):
                 obj_feat_id_seed = obj_feat_id_seed.long() + (
                     (torch.arange(batch_size) * obj_feat.shape[1])[:, None].to(obj_feat_id_seed.device))
                 obj_feat_id_seed = obj_feat_id_seed.reshape(-1)
-                obj_feat_id_vote = data_dict["aggregated_vote_inds"]
+                obj_feat_id_vote = data_dict["query_points_sample_inds"]
                 obj_feat_id_vote = obj_feat_id_vote.long() + (
                     (torch.arange(batch_size) * data_dict["seed_inds"].shape[1])[:, None].to(
                         obj_feat_id_vote.device))
@@ -128,8 +130,7 @@ class RelationModule(nn.Module):
 
             features = self.self_attn[i](features, features, features, attention_weights=dist_weights,
                                          way=attention_matrix_way)
-        #    features = self.self_attn[i](features, features, features)
-
+        features = self.dropout(features) + data_dict["pred_bbox_feature"]
         # data_dict['dist_weights'] = dist_weights
         # data_dict['attention_matrix_way'] = attention_matrix_way
         data_dict["bbox_feature"] = features

@@ -164,7 +164,6 @@ def box3d_iou_batch(corners1, corners2):
         iou: an array of 3D bounding box IoU
 
     '''
-    
     x_min_1, x_max_1, y_min_1, y_max_1, z_min_1, z_max_1 = get_box3d_min_max_batch(corners1)
     x_min_2, x_max_2, y_min_2, y_max_2, z_min_2, z_max_2 = get_box3d_min_max_batch(corners2)
     xA = np.maximum(x_min_1, x_min_2)

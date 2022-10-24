@@ -22,7 +22,7 @@ std::vector<at::Tensor> three_nn(at::Tensor unknowns, at::Tensor knows) {
   CHECK_IS_FLOAT(unknowns);
   CHECK_IS_FLOAT(knows);
 
-  if (unknowns.type().is_cuda()) {
+  if (unknowns.device().is_cuda()) {
     CHECK_CUDA(knows);
   }
 
@@ -33,12 +33,12 @@ std::vector<at::Tensor> three_nn(at::Tensor unknowns, at::Tensor knows) {
       torch::zeros({unknowns.size(0), unknowns.size(1), 3},
                    at::device(unknowns.device()).dtype(at::ScalarType::Float));
 
-  if (unknowns.type().is_cuda()) {
+  if (unknowns.device().is_cuda()) {
     three_nn_kernel_wrapper(unknowns.size(0), unknowns.size(1), knows.size(1),
-                            unknowns.data<float>(), knows.data<float>(),
-                            dist2.data<float>(), idx.data<int>());
+                            unknowns.data_ptr<float>(), knows.data_ptr<float>(),
+                            dist2.data_ptr<float>(), idx.data_ptr<int>());
   } else {
-    AT_CHECK(false, "CPU not supported");
+    TORCH_CHECK(false, "CPU not supported");
   }
 
   return {dist2, idx};
@@ -53,7 +53,7 @@ at::Tensor three_interpolate(at::Tensor points, at::Tensor idx,
   CHECK_IS_INT(idx);
   CHECK_IS_FLOAT(weight);
 
-  if (points.type().is_cuda()) {
+  if (points.device().is_cuda()) {
     CHECK_CUDA(idx);
     CHECK_CUDA(weight);
   }
@@ -62,13 +62,13 @@ at::Tensor three_interpolate(at::Tensor points, at::Tensor idx,
       torch::zeros({points.size(0), points.size(1), idx.size(1)},
                    at::device(points.device()).dtype(at::ScalarType::Float));
 
-  if (points.type().is_cuda()) {
+  if (points.device().is_cuda()) {
     three_interpolate_kernel_wrapper(
         points.size(0), points.size(1), points.size(2), idx.size(1),
-        points.data<float>(), idx.data<int>(), weight.data<float>(),
-        output.data<float>());
+        points.data_ptr<float>(), idx.data_ptr<int>(), weight.data_ptr<float>(),
+        output.data_ptr<float>());
   } else {
-    AT_CHECK(false, "CPU not supported");
+    TORCH_CHECK(false, "CPU not supported");
   }
 
   return output;
@@ -82,7 +82,7 @@ at::Tensor three_interpolate_grad(at::Tensor grad_out, at::Tensor idx,
   CHECK_IS_INT(idx);
   CHECK_IS_FLOAT(weight);
 
-  if (grad_out.type().is_cuda()) {
+  if (grad_out.device().is_cuda()) {
     CHECK_CUDA(idx);
     CHECK_CUDA(weight);
   }
@@ -91,13 +91,13 @@ at::Tensor three_interpolate_grad(at::Tensor grad_out, at::Tensor idx,
       torch::zeros({grad_out.size(0), grad_out.size(1), m},
                    at::device(grad_out.device()).dtype(at::ScalarType::Float));
 
-  if (grad_out.type().is_cuda()) {
-    three_interpolate_kernel_wrapper(
+  if (grad_out.device().is_cuda()) {
+    three_interpolate_grad_kernel_wrapper(
         grad_out.size(0), grad_out.size(1), grad_out.size(2), m,
-        grad_out.data<float>(), idx.data<int>(), weight.data<float>(),
-        output.data<float>());
+        grad_out.data_ptr<float>(), idx.data_ptr<int>(), weight.data_ptr<float>(),
+        output.data_ptr<float>());
   } else {
-    AT_CHECK(false, "CPU not supported");
+    TORCH_CHECK(false, "CPU not supported");
   }
 
   return output;

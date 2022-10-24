@@ -219,7 +219,7 @@ class SunToScannetDatasetConfig(object):
         self.num_class = len(self.type2class)
         self.num_heading_bin = 1
         self.num_size_cluster = len(self.type2class)
-        self.mean_size_arr = np.load(os.path.join(CONF.PATH.SCANNET, 'meta_data/scannet_reference_means.npz'))['arr_0']
+        self.mean_size_arr = np.load(os.path.join(CONF.PATH.SCANNET, 'meta_data/scannet_means.npz'))['arr_0']
         # a = np.load(os.path.join(CONF.PATH.SCANNET, 'meta_data/scannet_reference_means.npz'))
 
         # sunrgbd

@@ -45,14 +45,14 @@ def select_multi_target(data_dict):
 
     # ground truth bbox
     gt_bbox = data_dict["ref_box_corner_label_list"].float() # batch_size, lang_num_max, 8, 3
-    batch_size, len_nun_max, box_size = gt_bbox.shape[:3]
+    batch_size, len_num_max, box_size = gt_bbox.shape[:3]
     # print("word_embs", word_embs[0][0][0][:5], word_embs[0][1][0][:5])
-    gt_bbox = gt_bbox.reshape(batch_size * len_nun_max, box_size, -1) # batch_size * lang_num_max, 8, 3
-    pred_bbox = pred_bbox[:, None, :, :, :].repeat(1, len_nun_max, 1, 1, 1)\
-        .reshape(batch_size * len_nun_max, num_proposals, box_size, -1) # batch_size * lang_num_max, num_proposals, 8, 3
+    gt_bbox = gt_bbox.reshape(batch_size * len_num_max, box_size, -1) # batch_size * lang_num_max, 8, 3
+    pred_bbox = pred_bbox[:, None, :, :, :].repeat(1, len_num_max, 1, 1, 1)\
+        .reshape(batch_size * len_num_max, num_proposals, box_size, -1) # batch_size * lang_num_max, num_proposals, 8, 3
     target_ids = []
     target_ious = []
-    for i in range(batch_size * len_nun_max):
+    for i in range(batch_size * len_num_max):
         # convert the bbox parameters to bbox corners
         pred_bbox_batch = pred_bbox[i] # num_proposals, 8, 3
         gt_bbox_batch = gt_bbox[i].unsqueeze(0).repeat(num_proposals, 1, 1) # num_proposals, 8, 3
@@ -268,23 +268,23 @@ class TopDownSceneCaptionModule(nn.Module):
         corners = data_dict["pred_bbox_corner"] # batch_size, num_proposals, 8, 3
         centers = self._get_bbox_centers(corners) # batch_size, num_proposals, 3
         batch_size, num_proposal, _ = centers.shape
-        batch_size, len_nun_max = data_dict["lang_feat_list"].shape[:2]
+        batch_size, len_num_max = data_dict["lang_feat_list"].shape[:2]
 
-        corners = corners[:, None, :, :, :].repeat(1, len_nun_max, 1, 1, 1)\
-            .reshape(batch_size * len_nun_max, num_proposal, 8, -1) # batch_size*len_nun_max, num_proposals, 8, 3
-        centers = centers[:, None, :, :].repeat(1, len_nun_max, 1, 1)\
-            .reshape(batch_size * len_nun_max, num_proposal, -1) # batch_size*len_nun_max, num_proposals, 3
+        corners = corners[:, None, :, :, :].repeat(1, len_num_max, 1, 1, 1)\
+            .reshape(batch_size * len_num_max, num_proposal, 8, -1) # batch_size*len_num_max, num_proposals, 8, 3
+        centers = centers[:, None, :, :].repeat(1, len_num_max, 1, 1)\
+            .reshape(batch_size * len_num_max, num_proposal, -1) # batch_size*len_num_max, num_proposals, 3
 
         # decode target box info
-        target_centers = torch.gather(centers, 1, target_ids.view(-1, 1, 1).repeat(1, 1, 3)) # batch_size*len_nun_max, 1, 3
-        target_corners = torch.gather(corners, 1, target_ids.view(-1, 1, 1, 1).repeat(1, 1, 8, 3)) # batch_size*len_nun_max, 1, 8, 3
+        target_centers = torch.gather(centers, 1, target_ids.view(-1, 1, 1).repeat(1, 1, 3)) # batch_size*len_num_max, 1, 3
+        target_corners = torch.gather(corners, 1, target_ids.view(-1, 1, 1, 1).repeat(1, 1, 8, 3)) # batch_size*len_num_max, 1, 8, 3
 
         # get the distance
         if self.query_mode == "center":
-            pc_dist = self._nn_distance(target_centers, centers).squeeze(1) # batch_size*len_nun_max, num_proposals
+            pc_dist = self._nn_distance(target_centers, centers).squeeze(1) # batch_size*len_num_max, num_proposals
         elif self.query_mode == "corner":
-            pc_dist = self._nn_distance(target_corners.squeeze(1), centers) # batch_size*len_nun_max, 8, num_proposals
-            pc_dist, _ = torch.min(pc_dist, dim=1) # batch_size*len_nun_max, num_proposals
+            pc_dist = self._nn_distance(target_corners.squeeze(1), centers) # batch_size*len_num_max, 8, num_proposals
+            pc_dist, _ = torch.min(pc_dist, dim=1) # batch_size*len_num_max, num_proposals
         else:
             raise ValueError("invalid distance mode, choice: [\"center\", \"corner\"]")
 
@@ -293,13 +293,13 @@ class TopDownSceneCaptionModule(nn.Module):
 
         # exclude overlaid boxes
         tar2neigbor_iou = box3d_iou_batch_tensor(
-            target_corners.repeat(1, self.num_proposals, 1, 1).view(-1, 8, 3), corners.view(-1, 8, 3)).view(-1, self.num_proposals) # batch_size*len_nun_max, num_proposals
+            target_corners.repeat(1, self.num_proposals, 1, 1).view(-1, 8, 3), corners.view(-1, 8, 3)).view(-1, self.num_proposals) # batch_size*len_num_max, num_proposals
         overlaid_masks = tar2neigbor_iou >= overlay_threshold
         pc_dist.masked_fill_(overlaid_masks, float('1e30')) # distance to overlaid objects: infinity
 
         # include the target objects themselves
         self_dist = 0 if include_self else float('1e30')
-        self_masks = torch.zeros(batch_size*len_nun_max, self.num_proposals).cuda()
+        self_masks = torch.zeros(batch_size*len_num_max, self.num_proposals).cuda()
         self_masks.scatter_(1, target_ids.view(-1, 1), 1)
         pc_dist.masked_fill_(self_masks == 1, self_dist) # distance to themselves: 0 or infinity
 
@@ -307,7 +307,7 @@ class TopDownSceneCaptionModule(nn.Module):
         _, topk_ids = torch.topk(pc_dist, self.num_locals, largest=False, dim=1) # batch_size, num_locals
 
         # construct masks for the local context
-        local_masks = torch.zeros(batch_size*len_nun_max, self.num_proposals).cuda()
+        local_masks = torch.zeros(batch_size*len_num_max, self.num_proposals).cuda()
         local_masks.scatter_(1, topk_ids, 1)
 
         return local_masks
@@ -401,37 +401,37 @@ class TopDownSceneCaptionModule(nn.Module):
         return obj_features
 
     def target_feat_aug(self, data_dict, target_ids, target_feats, obj_feats):
-        B, num_proposal, obj_feature_size = obj_feats.shape  # batch_size * len_nun_max, num_proposal, 128
-        len_nun_max = data_dict["lang_feat_list"].shape[1]
-        batch_size = B // len_nun_max
+        B, num_proposal, obj_feature_size = obj_feats.shape  # batch_size * len_num_max, num_proposal, 128
+        len_num_max = data_dict["lang_feat_list"].shape[1]
+        batch_size = B // len_num_max
 
-        obj_feats = obj_feats.view(batch_size, len_nun_max, num_proposal, obj_feature_size)
-        pred_cluster_labels = target_ids.view(batch_size, len_nun_max, 1)  # B len_nun_max 1
+        obj_feats = obj_feats.view(batch_size, len_num_max, num_proposal, obj_feature_size)
+        pred_cluster_labels = target_ids.view(batch_size, len_num_max, 1)  # B len_num_max 1
         """
         sem_cls_scores = data_dict['sem_cls_scores']  # batch_size, num_proposal, 18
-        sem_cls_scores = sem_cls_scores[:, None, :, :].repeat(1, len_nun_max, 1, 1)  # batch_size, len_nun_max, num_proposal, 18
-        pred_obj_cls_scores = torch.gather(sem_cls_scores, 2, pred_cluster_labels.unsqueeze(3).repeat(1, 1, 1, self.num_class)).squeeze(2)  # B len_nun_max 18
-        pred_obj_cls = torch.argmax(pred_obj_cls_scores, 2).unsqueeze(2)  # batch_size, len_nun_max 1
+        sem_cls_scores = sem_cls_scores[:, None, :, :].repeat(1, len_num_max, 1, 1)  # batch_size, len_num_max, num_proposal, 18
+        pred_obj_cls_scores = torch.gather(sem_cls_scores, 2, pred_cluster_labels.unsqueeze(3).repeat(1, 1, 1, self.num_class)).squeeze(2)  # B len_num_max 18
+        pred_obj_cls = torch.argmax(pred_obj_cls_scores, 2).unsqueeze(2)  # batch_size, len_num_max 1
 
-        select_sem_cls_scores = torch.gather(sem_cls_scores, 3, pred_obj_cls.unsqueeze(3).repeat(1, 1, num_proposal, 1)).squeeze(3)  # B len_nun_max num_proposal
-        _, select_cls_scores_idx = torch.topk(select_sem_cls_scores, k=self.k, dim=-1, largest=True, sorted=False)  # B len_nun_max k
-        new_object_feats = torch.gather(obj_feats, 2, select_cls_scores_idx.unsqueeze(3).repeat(1, 1, 1, obj_feature_size))  # B len_nun_max k 128
-        new_object_feats = new_object_feats.view(batch_size * len_nun_max, self.k, obj_feature_size)
+        select_sem_cls_scores = torch.gather(sem_cls_scores, 3, pred_obj_cls.unsqueeze(3).repeat(1, 1, num_proposal, 1)).squeeze(3)  # B len_num_max num_proposal
+        _, select_cls_scores_idx = torch.topk(select_sem_cls_scores, k=self.k, dim=-1, largest=True, sorted=False)  # B len_num_max k
+        new_object_feats = torch.gather(obj_feats, 2, select_cls_scores_idx.unsqueeze(3).repeat(1, 1, 1, obj_feature_size))  # B len_num_max k 128
+        new_object_feats = new_object_feats.view(batch_size * len_num_max, self.k, obj_feature_size)
         """
         center = data_dict['center']  # batch_size, num_proposal, 3
-        center = center[:, None, :, :].repeat(1, len_nun_max, 1, 1)  # batch_size, len_nun_max, num_proposal, 3
-        pred_obj_center = torch.gather(center, 2, pred_cluster_labels.unsqueeze(3).repeat(1, 1, 1, 3)).view(batch_size * len_nun_max, 1, -1)  # B*len_nun_max 1 3
-        center = center.view(batch_size * len_nun_max, num_proposal, -1)
-        dist, ind = knn_distance(center[:, :, 0:3], pred_obj_center[:, :, 0:3], k=self.k)  # ind: B*len_nun_max 1 k
-        ind = ind.permute(0, 2, 1).contiguous()  # B*len_nun_max k
+        center = center[:, None, :, :].repeat(1, len_num_max, 1, 1)  # batch_size, len_num_max, num_proposal, 3
+        pred_obj_center = torch.gather(center, 2, pred_cluster_labels.unsqueeze(3).repeat(1, 1, 1, 3)).view(batch_size * len_num_max, 1, -1)  # B*len_num_max 1 3
+        center = center.view(batch_size * len_num_max, num_proposal, -1)
+        dist, ind = knn_distance(center[:, :, 0:3], pred_obj_center[:, :, 0:3], k=self.k)  # ind: B*len_num_max 1 k
+        ind = ind.permute(0, 2, 1).contiguous()  # B*len_num_max k
 
-        obj_features_reshape = obj_feats.view(batch_size * len_nun_max, num_proposal, -1)
+        obj_features_reshape = obj_feats.view(batch_size * len_num_max, num_proposal, -1)
         obj_knn = torch.gather(obj_features_reshape.unsqueeze(2).repeat(1, 1, self.k, 1), 1,
                                ind.unsqueeze(3).repeat(1, 1, 1, obj_feature_size))
-        new_object_feats = obj_knn.view(batch_size * len_nun_max, self.k, -1)
+        new_object_feats = obj_knn.view(batch_size * len_num_max, self.k, -1)
 
         T = 0.7
-        for i in range(batch_size * len_nun_max):
+        for i in range(batch_size * len_num_max):
             num = random.randint(0, 9)
             if num < self.k:
                 target_feats[i] = new_object_feats[i, num, :]
@@ -457,10 +457,10 @@ class TopDownSceneCaptionModule(nn.Module):
 
         word_embs = data_dict["lang_feat_list"]  # batch_size, lang_num_max, max_len, max_len
         des_lens = data_dict["lang_len_list"]
-        batch_size, len_nun_max, max_des_len = word_embs.shape[:3]
-        word_embs = word_embs.reshape(batch_size * len_nun_max, max_des_len, -1) # batch_size * lang_num_max, max_len, max_len
-        des_lens = des_lens.reshape(batch_size * len_nun_max)
-        first_obj = data_dict["first_obj_list"].reshape(batch_size * len_nun_max)
+        batch_size, len_num_max, max_des_len = word_embs.shape[:3]
+        word_embs = word_embs.reshape(batch_size * len_num_max, max_des_len, -1) # batch_size * lang_num_max, max_len, max_len
+        des_lens = des_lens.reshape(batch_size * len_num_max)
+        first_obj = data_dict["first_obj_list"].reshape(batch_size * len_num_max)
         if data_dict["istrain"][0] == 1 and random.random() < 0.5:
             for i in range(word_embs.shape[0]):
                 word_embs[i, first_obj] = data_dict["unk"][0]
@@ -490,19 +490,19 @@ class TopDownSceneCaptionModule(nn.Module):
 
         objectness_masks = data_dict['objectness_scores'].max(2)[1].float().unsqueeze(2)  # batch_size, num_proposals, 1
 
-        len_nun_max = data_dict["lang_feat_list"].shape[1]
+        len_num_max = data_dict["lang_feat_list"].shape[1]
 
         # objectness_masks = objectness_masks.permute(0, 2, 1).contiguous()  # batch_size, 1, num_proposals
         data_dict["random"] = random.random()
 
-        feature1 = features[:, None, :, :].repeat(1, len_nun_max, 1, 1).reshape(batch_size * len_nun_max, num_proposal,
+        feature1 = features[:, None, :, :].repeat(1, len_num_max, 1, 1).reshape(batch_size * len_num_max, num_proposal,
                                                                                 -1)
         if dist_weights is not None:
-            dist_weights = dist_weights[:, None, :, :, :].repeat(1, len_nun_max, 1, 1, 1).reshape(
-                batch_size * len_nun_max, dist_weights.shape[1], num_proposal, num_proposal)
+            dist_weights = dist_weights[:, None, :, :, :].repeat(1, len_num_max, 1, 1, 1).reshape(
+                batch_size * len_num_max, dist_weights.shape[1], num_proposal, num_proposal)
 
         obj_feats = feature1
-        object_masks = object_masks[:, None, :].repeat(1, len_nun_max, 1).reshape(batch_size * len_nun_max, num_proposal)
+        object_masks = object_masks[:, None, :].repeat(1, len_num_max, 1).reshape(batch_size * len_num_max, num_proposal)
         #################################caption########################################
         num_words = des_lens.max()
         # batch_size = des_lens.shape[0]
@@ -513,12 +513,12 @@ class TopDownSceneCaptionModule(nn.Module):
             target_ious = torch.ones(batch_size).cuda()
         else:
             # target_ids, target_ious = select_target(data_dict)
-            target_ids, target_ious = select_multi_target(data_dict)  # batch_size * len_nun_max
+            target_ids, target_ious = select_multi_target(data_dict)  # batch_size * len_num_max
         # print("obj_feats1", obj_feats.shape)
         # print("target_ids1", target_ids.shape)
-        # print("target_ids2", target_ids.view(batch_size*len_nun_max, 1, 1).repeat(1, 1, self.feat_size).shape)
+        # print("target_ids2", target_ids.view(batch_size*len_num_max, 1, 1).repeat(1, 1, self.feat_size).shape)
         # select object features
-        target_feats = torch.gather(obj_feats, 1, target_ids.view(batch_size*len_nun_max, 1, 1).repeat(1, 1, self.feat_size)).squeeze(1) # batch_size * len_nun_max, emb_size
+        target_feats = torch.gather(obj_feats, 1, target_ids.view(batch_size*len_num_max, 1, 1).repeat(1, 1, self.feat_size)).squeeze(1) # batch_size * len_num_max, emb_size
 
         # valid object proposal masks
         #valid_masks = object_masks if self.num_locals == -1 else self._query_locals(data_dict, target_ids, object_masks)
@@ -537,21 +537,21 @@ class TopDownSceneCaptionModule(nn.Module):
         # recurrent from 0 to max_len - 2
         outputs = []
         masks = []
-        hidden = torch.zeros(batch_size * len_nun_max, self.hidden_size).cuda()  # batch_size*len_nun_max, hidden_size
+        hidden = torch.zeros(batch_size * len_num_max, self.hidden_size).cuda()  # batch_size*len_num_max, hidden_size
         step_id = 0
-        step_input = word_embs[:, step_id]  # batch_size*len_nun_max, emb_size
+        step_input = word_embs[:, step_id]  # batch_size*len_num_max, emb_size
 
         # output_rand, step_input_rand = [], step_input[:, None, :].repeat(self.search_length)
         while True:
             # feed; The Top-Module is not useful
             hidden, step_mask = self._step(step_input, target_feats, obj_feats, hidden,
                                                        valid_masks.unsqueeze(-1))
-            step_output = self.classifier(hidden)  # batch_size*len_nun_max, num_vocabs
+            step_output = self.classifier(hidden)  # batch_size*len_num_max, num_vocabs
 
             # store
-            step_output = step_output.unsqueeze(1) # batch_size*len_nun_max, 1, num_vocabs
+            step_output = step_output.unsqueeze(1) # batch_size*len_num_max, 1, num_vocabs
             outputs.append(step_output)
-            masks.append(step_mask) # batch_size*len_nun_max, num_proposals, 1
+            masks.append(step_mask) # batch_size*len_num_max, num_proposals, 1
 
             # next step
             step_id += 1
@@ -564,7 +564,7 @@ class TopDownSceneCaptionModule(nn.Module):
             if (data_dict["epoch"] < 20 and rand2 < 0.1) or (data_dict["epoch"] >= 20 and rand2 < 0.2):
                 # predicted word
                 step_preds = []
-                for batch_id in range(batch_size * len_nun_max):
+                for batch_id in range(batch_size * len_num_max):
                     idx = step_output[batch_id].argmax()  # 0 ~ num_vocabs
                     word = self.vocabulary["idx2word"][str(idx.item())]
                     if word in self.embeddings.keys():
@@ -573,23 +573,23 @@ class TopDownSceneCaptionModule(nn.Module):
                         emb = torch.zeros(self.embeddings['none'].shape).cuda()
                     # emb = torch.FloatTensor(self.embeddings[word]).unsqueeze(0).cuda()  # 1, emb_size
                     step_preds.append(emb[None, :])
-                step_preds = torch.cat(step_preds, dim=0)  # batch_size*len_nun_max, emb_size
+                step_preds = torch.cat(step_preds, dim=0)  # batch_size*len_num_max, emb_size
                 step_input = step_preds
             elif (data_dict["epoch"] < 20 and rand2 < 0.3) or (data_dict["epoch"] >= 20 and rand2 < 0.4):
-                step_input = unk.unsqueeze(0).repeat(batch_size * len_nun_max, 1)
+                step_input = unk.unsqueeze(0).repeat(batch_size * len_num_max, 1)
             else:
-                step_input = word_embs[:, step_id]  # batch_size*len_nun_max, emb_size
+                step_input = word_embs[:, step_id]  # batch_size*len_num_max, emb_size
 
             # RL Policy Gradient
             # TODO
 
-        outputs = torch.cat(outputs, dim=1)  # batch_size*len_nun_max, num_words - 1/max_len, num_vocabs
-        masks = torch.cat(masks, dim=-1)  # batch_size*len_nun_max, num_proposals, num_words - 1/max_len
+        outputs = torch.cat(outputs, dim=1)  # batch_size*len_num_max, num_words - 1/max_len, num_vocabs
+        masks = torch.cat(masks, dim=-1)  # batch_size*len_num_max, num_proposals, num_words - 1/max_len
 
         # NOTE when the IoU of best matching predicted boxes and the GT boxes
         # are smaller than the threshold, the corresponding predicted captions
         # should be filtered out in case the model learns wrong things
-        good_bbox_masks = target_ious > min_iou # batch_size*len_nun_max
+        good_bbox_masks = target_ious > min_iou # batch_size*len_num_max
 
         num_good_bboxes = good_bbox_masks.sum()
         mean_target_ious = target_ious[good_bbox_masks].mean() if num_good_bboxes > 0 else torch.zeros(1)[0].cuda()
@@ -605,12 +605,12 @@ class TopDownSceneCaptionModule(nn.Module):
         data_dict["valid_masks"] = valid_masks
         data_dict["good_bbox_masks"] = good_bbox_masks
 
-        target_ious = target_ious.reshape(batch_size, len_nun_max)
+        target_ious = target_ious.reshape(batch_size, len_num_max)
         lang_num = data_dict["lang_num"]
         max_iou_rate_25 = 0
         max_iou_rate_5 = 0
         for i in range(batch_size):
-            for j in range(len_nun_max):
+            for j in range(len_num_max):
                 if j < lang_num[i]:
                     if target_ious[i, j] >= 0.25:
                         max_iou_rate_25 += 1

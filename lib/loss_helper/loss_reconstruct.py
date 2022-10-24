@@ -3,17 +3,20 @@ import sys
 import torch.nn.functional as F
 
 
-def reconstruct_score(logit, idx, mask, weights=None):
+def reconstruct_score(logit, idx, mask, len_num_mask, weights=None):
     """
         logit: [bs, len_num_max, max_des_len, vocab_size]
         idx: [bs, len_num_max, max_des_len]
         mask: [bs, len_num_max, max_des_len]
+        len_num_mask: [bs, len_num_max]
     """
 
     bs, len_num_max, max_des_len = logit.shape[:3]
     logit = logit.reshape(bs * len_num_max, max_des_len, -1)
     idx = idx[:, :, :max_des_len].reshape(bs * len_num_max, max_des_len)
     mask = mask[:, :, :max_des_len].reshape(bs * len_num_max, max_des_len)
+    len_num_mask = len_num_mask.reshape(bs * len_num_max, 1).expand(-1, max_des_len)
+    mask = mask.masked_fill(len_num_mask == 0, 2)
 
     eps = 0.1
     logit = logit.log_softmax(dim=-1)
@@ -28,7 +31,7 @@ def reconstruct_score(logit, idx, mask, weights=None):
     nll_loss1 = nll_loss.masked_fill(mask == 0, 0)
     nll_loss1 = nll_loss1.sum(dim=-1) / ((mask == 1).int().sum(dim=-1) + 1e-7)
     # nll_loss = nll_loss.sum(dim=-1) / ((mask != 2).int().sum(dim=-1) + 1e-7)  # [bs * len_num_max]
-    nll_eps = 0.1
+    nll_eps = 0.3
     loss = nll_eps * nll_loss0 + (1 - nll_eps) * nll_loss1
     # nll_loss = nll_loss.mean()
     return loss
@@ -57,13 +60,16 @@ def reconstruct_score(logit, idx, mask, weights=None):
 #     rec_loss1 = rec_loss.masked_fill(mask == 0, 0)
 #     rec_loss0 = rec_loss0.sum(dim=-1) / ((mask == 0).int().sum(dim=-1) + 1e-7)
 #     rec_loss1 = rec_loss1.sum(dim=-1) / ((mask == 1).int().sum(dim=-1) + 1e-7)
-#     loss = rec_loss0 + 5 * rec_loss1
+#
+#     eps = 0.1
+#     loss = eps * rec_loss0 + (1-eps) * rec_loss1
 #     return loss
 
 
-def reconstruct_loss(rec_score):
+def reconstruct_loss(rec_score, epoch, len_num_mask):
     """
         rec_score: [bs*len_num_max, n_candidate]
+        len_num_mask: [bs, len_num_max]
     """
     # n_candidate = rec_score.shape[1]
     # rewards = torch.linspace(0, 1, n_candidate).to(rec_score.device)
@@ -71,19 +77,29 @@ def reconstruct_loss(rec_score):
     # _, idx = torch.sort(idx, dim=-1)
     # rewards = rewards[idx]
     # rec_loss = rewards * rec_score
-    # topks = torch.topk(rec_score, k=4, dim=-1, largest=False)[0]
-    return rec_score.mean()
-    # return topks.mean()
+    n_candidate = rec_score.shape[1]
+    len_num_mask = len_num_mask.flatten(0, 1).unsqueeze(-1)
+    rec_score = rec_score.masked_fill(len_num_mask == 0, 0.)
+    tot_len_num = len_num_mask.sum()
+    if epoch <= 2:
+        return rec_score.sum() / (tot_len_num+1e-7) / n_candidate
+    else:
+        topks = torch.topk(rec_score, k=n_candidate//2, dim=-1, largest=False)[0]
+        return topks.sum() / (tot_len_num+1e-7) / (n_candidate // 2)
 
 
-def weakly_supervised_loss(rec_score, all_score, data_dict):
+def weakly_supervised_loss(rec_score, all_score, data_dict, len_num_mask):
     """
         candidate_score: [bs*len_num_max, n_candidate]
         rec_score: [bs*len_num_max, n_candidate]
+        len_num_mask: [bs, len_num_max]
     """
+    len_num_mask = len_num_mask.flatten(0, 1).unsqueeze(-1)
+    tot_len_num = len_num_mask.sum()
     all_score = -all_score.log_softmax(dim=-1)
     target_ids = data_dict["target_ids"].resize(*rec_score.shape)
     candidate_score = torch.gather(all_score, -1, target_ids)
+    candidate_score = candidate_score.masked_fill(len_num_mask == 0, 0.)
 
     n_candidate = candidate_score.shape[1]
     # if data_dict["epoch"] > 0:
@@ -92,18 +108,14 @@ def weakly_supervised_loss(rec_score, all_score, data_dict):
     # else:
     #     rewards = torch.linspace(0, 1, n_candidate).to(candidate_score.device)  # pseudo-label by rec_loss
     rewards = torch.linspace(0.1, 1, n_candidate).to(candidate_score.device)
-    # rewards = rewards**2
+    rewards = rewards**2
 
     idx = torch.argsort(rec_score, dim=-1, descending=True)
     _, idx = torch.sort(idx, dim=-1)
     rewards = rewards[idx]
     # if data_dict["epoch"] == 0:
     #     rewards = torch.linspace(1, 0, n_candidate).to(candidate_score.device)
-    grounding_loss = (rewards * candidate_score).mean()
-    # grounding_loss = candidate_score.mean()
-    # grounding_loss = -(rewards * candidate_score.log_softmax(dim=-1)).mean()
-
-    # target_object_loss = -torch.gather(all_score, -1, target_ids).mean()
+    grounding_loss = (rewards * candidate_score).sum() / (tot_len_num+1e-7) / n_candidate
 
     weak_loss = grounding_loss
     data_dict["grounding_loss"] = grounding_loss

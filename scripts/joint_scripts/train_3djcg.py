@@ -67,40 +67,47 @@ def get_dataloader(args, scanrefer, scanrefer_new, all_scene_list, split, config
     def my_worker_init_fn(worker_id):
         np.random.seed(np.random.get_state()[1][0] + worker_id)
 
-    if args.distribute and split == "train":
-        sampler = torch.utils.data.distributed.DistributedSampler(dataset)
-        dataloader = torch.utils.data.DataLoader(dataset,
-                                                 batch_size=args.batch_size,
-                                                 shuffle=False,
-                                                 num_workers=1,
-                                                 worker_init_fn=my_worker_init_fn,
-                                                 sampler=sampler,
-                                                 drop_last=True)
+    if split == "train":
+        bs = args.batch_size
     else:
-        dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True if split == "train" else False, num_workers=1)
+        bs = args.val_batch_size
+
+    # if args.distribute and split == "train":
+    #     sampler = torch.utils.data.distributed.DistributedSampler(dataset)
+    #     dataloader = torch.utils.data.DataLoader(dataset,
+    #                                              batch_size=bs,
+    #                                              shuffle=False,
+    #                                              num_workers=1,
+    #                                              worker_init_fn=my_worker_init_fn,
+    #                                              sampler=sampler,
+    #                                              drop_last=True)
+    # else:
+    #     dataloader = DataLoader(dataset, batch_size=bs, shuffle=True if split == "train" else False, num_workers=1)
+    dataloader = DataLoader(dataset, batch_size=bs, shuffle=False, num_workers=1)
 
     return dataset, dataloader
 
 def get_model(args, dataset):
     # initiate model
     # input_channels = int(args.use_multiview) * 128 + int(args.use_normal) * 3 + int(args.use_color) * 3 + int(not args.no_height)
-    input_channels = int(not args.no_height)
+    input_channels = int(not args.no_height) + int(args.use_color) * 3
     model = JointNet(
         # num_class=DC.num_class,
         vocabulary=dataset.vocabulary,
-        embeddings=dataset.glove,
+        # embeddings=dataset.glove,
         # num_heading_bin=DC.num_heading_bin,
         # num_size_cluster=DC.num_size_cluster,
         # mean_size_arr=DC.mean_size_arr,
         input_feature_dim=input_channels,
+        width=args.width,
+        # sampling=args.sampling,
+        hidden_size=args.hidden_size,
         num_proposal=args.num_proposals,
         num_target=args.num_target,
         no_caption=args.no_caption,
         use_topdown=args.use_topdown,
         num_locals=args.num_locals,
         query_mode=args.query_mode,
-        num_graph_steps=args.num_graph_steps,
-        use_relation=args.use_relation,
         use_lang_classifier=(not args.no_lang_cls),
         use_bidir=args.use_bidir,
         no_reference=args.no_reference,
@@ -155,10 +162,15 @@ def get_model(args, dataset):
     #     model.vgen = pretrained_model.vgen
     #     model.proposal = pretrained_model.proposal
     #     model.relation = pretrained_model.relation
-    print("loading pretrained VoteNet...")
-    pretrained_votenet_weights = torch.load(CONF.PATH.VOTENET_PRETRAIN)
-    # print(pretrained_votenet_weights["model_state_dict"].keys())
-    model.load_state_dict(pretrained_votenet_weights["model_state_dict"], strict=False)
+    # print("loading pretrained VoteNet...")
+    # pretrained_votenet_weights = torch.load(CONF.PATH.VOTENET_PRETRAIN)
+    # # print(pretrained_votenet_weights["model_state_dict"].keys())
+    # model.load_state_dict(pretrained_votenet_weights["model_state_dict"], strict=False)
+
+    print("loading predtrained GroupFree...")
+    pretrained_groupfree_weights = torch.load(CONF.PATH.GROUPFREE_PRETRAIN)
+    # print(pretrained_groupfree_weights.keys())
+    model.group_free.load_state_dict(pretrained_groupfree_weights, strict=False)
 
     # print("loading pretrained LangModule weights...")
     # pretrained_lang_weights = torch.load(CONF.PATH.LANGMODULE_PRETRAIN)
@@ -200,10 +212,11 @@ def get_solver(args, dataset, dataloader):
     }
     """
     weight_dict = {
-        'lang': {'lr': 0.0005},
-        'relation': {'lr': 0.0005},
-        'match': {'lr': 0.0005},
-        'caption': {'lr': 0.0005},
+        # 'lang': {'lr': 0.003},
+        # 'relation': {'lr': 0.003},
+        # 'match': {'lr': 0.003},
+        # 'contranet': {'lr': 0.003},
+        # 'recnet': {'lr': 0.003}
     }
     params = set_params_lr_dict(model, base_lr=args.lr, weight_decay=args.wd, weight_dict=weight_dict)
     # params = model.parameters()
@@ -463,22 +476,25 @@ if __name__ == "__main__":
     parser.add_argument("--local_rank", type=int, help="local ran for DistributedDataParallel")
     parser.add_argument("--opt_steps", type=int, default=1, help="optimizer steps")
 
-    parser.add_argument("--batch_size", type=int, help="batch size", default=8)
+    parser.add_argument("--batch_size", type=int, help="batch size", default=2)
+    parser.add_argument("--val_batch_size", type=int, help="val batch size", default=6)
     parser.add_argument("--epoch", type=int, help="number of epochs", default=20)
     parser.add_argument("--verbose", type=int, help="iterations of showing verbose", default=50)
     parser.add_argument("--val_step", type=int, help="iterations of validating", default=500)
-    parser.add_argument("--lr", type=float, help="learning rate", default=2e-3)
-    parser.add_argument("--wd", type=float, help="weight decay", default=1e-3)
+    parser.add_argument("--lr", type=float, help="learning rate", default=1e-3)
+    parser.add_argument("--wd", type=float, help="weight decay", default=5e-4)
     parser.add_argument("--amsgrad", action='store_true', help="optimizer with amsgrad")
 
+    parser.add_argument("--hidden_size", type=int, help="hidden size", default=288)
     parser.add_argument("--lang_num_max", type=int, help="lang num max", default=8)
-    parser.add_argument("--num_points", type=int, default=40000, help="Point Number [default: 40000]")
+    parser.add_argument("--num_points", type=int, default=50000, help="Point Number [default: 40000]")
     parser.add_argument("--num_proposals", type=int, default=256, help="Proposal number [default: 256]")
-    parser.add_argument("--num_target", type=int, default=8, help="Target proposal number [default: 8]")
+    parser.add_argument("--num_target", type=int, default=16, help="Target proposal number [default: 8]")
     parser.add_argument("--num_locals", type=int, default=20, help="Number of local objects [default: -1]")
     parser.add_argument("--num_scenes", type=int, default=-1, help="Number of scenes [default: -1]")
     parser.add_argument("--num_graph_steps", type=int, default=0, help="Number of graph conv layer [default: 0]")
     parser.add_argument("--num_ground_epoch", type=int, default=100, help="Number of ground epoch [default: 50]")
+    parser.add_argument("--width", type=int, default=1, help="backbone width")
 
     parser.add_argument("--criterion", type=str, default="sum", \
         help="criterion for selecting the best model [choices: bleu-1, bleu-2, bleu-3, bleu-4, cider, rouge, meteor, sum]")
@@ -488,8 +504,8 @@ if __name__ == "__main__":
     parser.add_argument("--graph_aggr", type=str, default="add", help="Mode for aggregating features, [choices: add, mean, max]")
 
     parser.add_argument("--coslr", action='store_true', help="cosine learning rate")
-    parser.add_argument("--no_height", action="store_true", help="Do NOT use height signal in input.")
-    parser.add_argument("--no_augment", action="store_true", help="Do NOT use height signal in input.")
+    parser.add_argument("--no_height", action="store_true", default=True, help="Do NOT use height signal in input.")
+    parser.add_argument("--no_augment", action="store_true", default=True, help="Do NOT use height signal in input.")
     parser.add_argument("--no_detection", action="store_true", default=True, help="Do NOT train the detection module.")
     parser.add_argument("--no_caption", action="store_true", default=True, help="Do NOT train the caption module.")
     parser.add_argument("--no_lang_cls", action="store_true", help="Do NOT use language classifier.")
@@ -499,7 +515,7 @@ if __name__ == "__main__":
     parser.add_argument("--use_color", action="store_true", help="Use RGB color in input.")
     parser.add_argument("--use_normal", action="store_true", default=True, help="Use RGB color in input.")
     parser.add_argument("--use_multiview", action="store_true", default=True, help="Use multiview images.")
-    parser.add_argument("--use_topdown", action="store_true", help="Use top-down attention for captioning.")
+    parser.add_argument("--use_topdown", action="store_true", default=True, help="Use top-down attention for captioning.")
     parser.add_argument("--use_relation", action="store_true", help="Use object-to-object relation in graph.")
     parser.add_argument("--use_new", action="store_true", help="Use new Top-down module.")
     parser.add_argument("--use_orientation", action="store_true", help="Use object-to-object orientation loss in graph.")

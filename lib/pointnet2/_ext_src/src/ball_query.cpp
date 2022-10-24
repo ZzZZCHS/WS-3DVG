@@ -17,7 +17,7 @@ at::Tensor ball_query(at::Tensor new_xyz, at::Tensor xyz, const float radius,
   CHECK_IS_FLOAT(new_xyz);
   CHECK_IS_FLOAT(xyz);
 
-  if (new_xyz.type().is_cuda()) {
+  if (new_xyz.device().is_cuda()) {
     CHECK_CUDA(xyz);
   }
 
@@ -25,12 +25,12 @@ at::Tensor ball_query(at::Tensor new_xyz, at::Tensor xyz, const float radius,
       torch::zeros({new_xyz.size(0), new_xyz.size(1), nsample},
                    at::device(new_xyz.device()).dtype(at::ScalarType::Int));
 
-  if (new_xyz.type().is_cuda()) {
+  if (new_xyz.device().is_cuda()) {
     query_ball_point_kernel_wrapper(xyz.size(0), xyz.size(1), new_xyz.size(1),
-                                    radius, nsample, new_xyz.data<float>(),
-                                    xyz.data<float>(), idx.data<int>());
+                                    radius, nsample, new_xyz.data_ptr<float>(),
+                                    xyz.data_ptr<float>(), idx.data_ptr<int>());
   } else {
-    AT_CHECK(false, "CPU not supported");
+    TORCH_CHECK(false, "CPU not supported");
   }
 
   return idx;

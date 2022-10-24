@@ -62,13 +62,11 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
 
     #batch_size, num_words, _ = data_dict["lang_feat"].shape
 
-    objectness_preds_batch = torch.argmax(data_dict['objectness_scores'], 2).long()
+    # objectness_preds_batch = torch.argmax(data_dict['objectness_scores'], 2).long()
+    objectness_preds_batch = torch.round(data_dict["objectness_scores"].sigmoid()).squeeze(-1).long()
     # objectness_labels_batch = data_dict['objectness_label'].long()
     sem_cls_pred = data_dict['sem_cls_scores'].argmax(-1)  # (B,K)
     num_proposal = sem_cls_pred.shape[1]
-    # print(data_dict['objectness_scores'].size())
-    # print(objectness_preds_batch[0])
-    # print(objectness_labels_batch[0])
 
     if post_processing:
         _ = parse_predictions(data_dict, post_processing)
@@ -83,67 +81,28 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
         # label_masks = (objectness_labels_batch == 1).float()
 
     batch_size, len_num_max = data_dict['ref_center_label_list'].shape[:2]
-    # cluster_preds = torch.argmax(data_dict["cluster_ref"], 1).long().unsqueeze(1).repeat(1,pred_masks.shape[1])
-    # print(data_dict["cluster_ref"][0])
-
-    # preds = torch.zeros(data_dict["cluster_ref"].shape).cuda()
-    # preds = preds.scatter_(1, cluster_preds, 1)
-    # cluster_preds = preds
-    # cluster_labels = data_dict["cluster_labels"].reshape(batch_size*len_num_max, -1).float()
-    # print(cluster_labels.shape, '<< cluster labels shape')
-    #cluster_labels *= label_masks
-
-    # compute classification scores
-    # corrects = torch.sum((cluster_preds == 1) * (cluster_labels == 1), dim=1).float()
-    # labels = torch.ones(corrects.shape[0]).cuda()
-    # ref_acc = corrects / (labels + 1e-8)
-
-    # pred_lang_cat = torch.argmax(data_dict['lang_scores'], 1)
 
     pred_mask1 = pred_masks.reshape(batch_size, 1, -1).repeat(1, len_num_max, 1).reshape(batch_size * len_num_max, -1)
     target_ids = data_dict["target_ids"]
+
+
     bs, len_num_max, num_target = target_ids.shape
     target_ids = target_ids.resize(bs * len_num_max, num_target)
     target_object_mask = pred_mask1.new_zeros(*pred_mask1.size())
     target_object_mask.scatter_(1, target_ids, 1.)
     candidate_mask = pred_mask1 * target_object_mask  # bs * len_num_max, num_proposal
 
-    # torch.set_printoptions(precision=10)
     if not is_eval:
         rec_score = pred_mask1.new_zeros(*pred_mask1.size())
         rec_score.scatter_(1, target_ids, data_dict["rec_score"])
         max_score = torch.max(data_dict["rec_score"], dim=-1, keepdim=True)[0] + 1.
         masked_pred_rec = rec_score * candidate_mask + rec_score * target_object_mask * 1e-7 + (1-candidate_mask) * max_score
         pred_ref_rec = torch.argmin(masked_pred_rec, 1)
-        # print(masked_pred_rec[0])
-        # tmp = torch.sort(masked_pred_rec[0])
-        # print("sorted", tmp[0], tmp[1])
-        # print(candidate_mask[0])
-        # print(torch.arange(num_proposal)[candidate_mask[0].bool()])
-        # sys.exit()
 
-    # store
-    # data_dict["ref_acc"] = ref_acc.cpu().numpy().tolist()
-    # ct = [0] * 18
-    # ctt = 0
-    # compute localization metricens
-    # if use_best:
-    #     pred_ref = torch.argmax(data_dict["cluster_labels"], 1)  # (B,)
-    #     # store the calibrated predictions and masks
-    #     data_dict['cluster_ref'] = data_dict["cluster_labels"]
     if use_cat_rand:
         cluster_preds = torch.zeros(bs*len_num_max, num_proposal).cuda()
-        # print(cluster_preds.shape)
         for i in range(cluster_preds.shape[0]):
-            # num_bbox = data_dict["num_bbox"][i // len_num_max]
-            # sem_cls_label = data_dict["sem_cls_label"][i // len_num_max].detach().clone()
-            # sem_cls_label[num_bbox:] -= 1
-            # candidate_masks = (sem_cls_pred[i // len_num_max] == pred_lang_cat[i])
-            # for ii in sem_cls_pred[i // len_num_max]:
-            #     ct[ii] += 1
-            # candidate_masks = candidate_masks * pred_masks[i // len_num_max].bool()
             candidates = torch.arange(num_proposal)[candidate_mask[i].bool()]
-            # ctt += candidates.shape[0]
             if candidates.shape[0] == 0:
                 candidates = torch.arange(num_proposal)[target_object_mask[i].bool()]
             try:
@@ -152,15 +111,11 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
                 cluster_preds[i, chosen_candidate] = 1
             except IndexError:
                 cluster_preds[i, candidates] = 1
+        pred_ref_rand = torch.argmax(cluster_preds, -1)  # (B,)
 
-        pred_ref = torch.argmax(cluster_preds, -1)  # (B,)
-        # store the calibrated predictions and masks
-        data_dict['cluster_ref'] = cluster_preds
-    else:
-        masked_pred = data_dict['cluster_ref'] * candidate_mask + data_dict['cluster_ref'] * target_object_mask * 1e-7
-        pred_ref = torch.argmax(masked_pred, 1)  # (B,)
-        # store the calibrated predictions and masks
-        #data_dict['cluster_ref'] = data_dict['cluster_ref'] * pred_masks
+    masked_pred = data_dict['cluster_ref'] * candidate_mask + data_dict['cluster_ref'] * target_object_mask * 1e-7
+    pred_ref = torch.argmax(masked_pred, 1)  # (B,)
+    pred_ref_top5 = torch.topk(masked_pred, k=5, dim=1)[1]
 
     pred_heading = data_dict['pred_heading'].detach().cpu().numpy() # B,num_proposal
     pred_center = data_dict['pred_center'].detach().cpu().numpy() # (B, num_proposal)
@@ -188,18 +143,84 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
     gt_bboxes = []
     #print("pred_ref", pred_ref.shape, gt_ref.shape)
     pred_ref = pred_ref.reshape(batch_size, len_num_max)
+
+    top5_ious = []
+    pred_ref_top5 = pred_ref_top5.reshape(batch_size, len_num_max, -1)
+
     if not is_eval:
         rec_ious = []
         pred_ref_rec = pred_ref_rec.reshape(batch_size, len_num_max)
+    if use_random:
+        rand_ious = []
+    if use_cat_rand:
+        cat_rand_ious = []
+        pred_ref_rand = pred_ref_rand.reshape(batch_size, len_num_max)
+    if use_best:
+        best_ious = []
+    if use_best_in_cat:
+        best_cat_ious = []
 
-    # print(target_ids[0:len_num_max], pred_ref[0], pred_ref_rec[0])
+    # pred
+    for i in range(batch_size):
+        for j in range(len_num_max):
+            if j < lang_num[i]:
+                gt_ref_idx = gt_ref[i][j]
+                gt_obb = config.param2obb(
+                    gt_center[i, gt_ref_idx, 0:3].detach().cpu().numpy(),
+                    gt_heading_class[i, gt_ref_idx].detach().cpu().numpy(),
+                    gt_heading_residual[i, gt_ref_idx].detach().cpu().numpy(),
+                    gt_size_class[i, gt_ref_idx].detach().cpu().numpy(),
+                    gt_size_residual[i, gt_ref_idx].detach().cpu().numpy()
+                )
+                gt_bbox = get_3d_box(gt_obb[3:6], gt_obb[6], gt_obb[0:3])
+                pred_ref_idx = pred_ref[i][j]
+                pred_center_ids = pred_center[i][pred_ref_idx]
+                pred_heading_ids = pred_heading[i][pred_ref_idx]
+                pred_box_size_ids = pred_box_size[i][pred_ref_idx]
+                pred_bbox = get_3d_box(pred_box_size_ids, pred_heading_ids, pred_center_ids)
+                iou = eval_ref_one_sample(pred_bbox, gt_bbox)
+                pred_bbox = construct_bbox_corners(pred_center_ids, pred_box_size_ids)
+                ious.append(iou)
 
-    if not use_best_in_cat:
+                # NOTE: get_3d_box() will return problematic bboxes
+                gt_bbox = construct_bbox_corners(gt_obb[0:3], gt_obb[3:6])
+                pred_bboxes.append(pred_bbox)
+                gt_bboxes.append(gt_bbox)
+
+                # construct the multiple mask
+                multiple.append(data_dict["unique_multiple_list"][i][j].item())
+
+                # construct the others mask
+                flag = 1 if data_dict["object_cat_list"][i][j] == 17 else 0
+                others.append(flag)
+
+    # top5
+    for i in range(batch_size):
+        for j in range(len_num_max):
+            if j < lang_num[i]:
+                gt_ref_idx = gt_ref[i][j]
+                gt_obb = config.param2obb(
+                    gt_center[i, gt_ref_idx, 0:3].detach().cpu().numpy(),
+                    gt_heading_class[i, gt_ref_idx].detach().cpu().numpy(),
+                    gt_heading_residual[i, gt_ref_idx].detach().cpu().numpy(),
+                    gt_size_class[i, gt_ref_idx].detach().cpu().numpy(),
+                    gt_size_residual[i, gt_ref_idx].detach().cpu().numpy()
+                )
+                gt_bbox = get_3d_box(gt_obb[3:6], gt_obb[6], gt_obb[0:3])
+                max_iou = 0
+                for pred_ref_idx in pred_ref_top5[i][j]:
+                    pred_center_ids = pred_center[i][pred_ref_idx]
+                    pred_heading_ids = pred_heading[i][pred_ref_idx]
+                    pred_box_size_ids = pred_box_size[i][pred_ref_idx]
+                    pred_bbox = get_3d_box(pred_box_size_ids, pred_heading_ids, pred_center_ids)
+                    iou = eval_ref_one_sample(pred_bbox, gt_bbox)
+                    if iou > max_iou:
+                        max_iou = iou
+                top5_ious.append(max_iou)
+
+    # rand in cat
+    if use_cat_rand:
         for i in range(batch_size):
-            # compute the iou
-            # sem_cls_label = data_dict["sem_cls_label"][i]
-            # object_assignment = data_dict["object_assignment"][i]
-            candidates = torch.arange(num_proposal)[pred_masks[i].bool()]
             for j in range(len_num_max):
                 if j < lang_num[i]:
                     gt_ref_idx = gt_ref[i][j]
@@ -211,48 +232,17 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
                         gt_size_residual[i, gt_ref_idx].detach().cpu().numpy()
                     )
                     gt_bbox = get_3d_box(gt_obb[3:6], gt_obb[6], gt_obb[0:3])
-                    if use_random:
-                        if candidates.shape[0] == 0:
-                            pred_ref_idx = random.randint(0, 255)
-                        else:
-                            chosen_idx = torch.randperm(candidates.shape[0])[0]
-                            pred_ref_idx = candidates[chosen_idx]
-                    else:
-                        pred_ref_idx = pred_ref[i][j]
+                    pred_ref_idx = pred_ref_rand[i][j]
                     pred_center_ids = pred_center[i][pred_ref_idx]
                     pred_heading_ids = pred_heading[i][pred_ref_idx]
                     pred_box_size_ids = pred_box_size[i][pred_ref_idx]
                     pred_bbox = get_3d_box(pred_box_size_ids, pred_heading_ids, pred_center_ids)
                     iou = eval_ref_one_sample(pred_bbox, gt_bbox)
-                    pred_bbox = construct_bbox_corners(pred_center_ids, pred_box_size_ids)
-                    ious.append(iou)
+                    cat_rand_ious.append(iou)
 
-                    if not is_eval:
-                        pred_ref_rec_idx = pred_ref_rec[i][j]
-                        pred_center_rec_ids = pred_center[i][pred_ref_rec_idx]
-                        pred_heading_rec_ids = pred_heading[i][pred_ref_rec_idx]
-                        pred_box_size_rec_ids = pred_box_size[i][pred_ref_rec_idx]
-                        pred_bbox_rec = get_3d_box(pred_box_size_rec_ids, pred_heading_rec_ids, pred_center_rec_ids)
-                        rec_iou = eval_ref_one_sample(pred_bbox_rec, gt_bbox)
-                        rec_ious.append(rec_iou)
-
-                    # NOTE: get_3d_box() will return problematic bboxes
-                    gt_bbox = construct_bbox_corners(gt_obb[0:3], gt_obb[3:6])
-                    pred_bboxes.append(pred_bbox)
-                    gt_bboxes.append(gt_bbox)
-
-                    # construct the multiple mask
-                    multiple.append(data_dict["unique_multiple_list"][i][j].item())
-
-                    # construct the others mask
-                    flag = 1 if data_dict["object_cat_list"][i][j] == 17 else 0
-                    others.append(flag)
-    else:
+    # bese in cat
+    if use_best_in_cat:
         for i in range(batch_size):
-            # compute the iou
-            # sem_cls_label = data_dict["sem_cls_label"][i]
-            # object_assignment = data_dict["object_assignment"][i]
-            # candidates = torch.arange(num_proposal)[pred_masks[i].bool()]
             for j in range(len_num_max):
                 if j < lang_num[i]:
                     gt_ref_idx = gt_ref[i][j]
@@ -266,44 +256,109 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
                     gt_bbox = get_3d_box(gt_obb[3:6], gt_obb[6], gt_obb[0:3])
                     max_iou = 0
                     for k in range(target_ids.shape[1]):
-                    # for k in range(2, 3):
-                        # print(k, end="")
-                    # for pred_ref_idx in range(256):
                         pred_ref_idx = target_ids[i*len_num_max+j][k]
                         pred_center_ids = pred_center[i][pred_ref_idx]
                         pred_heading_ids = pred_heading[i][pred_ref_idx]
                         pred_box_size_ids = pred_box_size[i][pred_ref_idx]
                         pred_bbox = get_3d_box(pred_box_size_ids, pred_heading_ids, pred_center_ids)
                         iou = eval_ref_one_sample(pred_bbox, gt_bbox)
-                        pred_bbox = construct_bbox_corners(pred_center_ids, pred_box_size_ids)
                         if iou > max_iou:
                             max_iou = iou
-                    # NOTE: get_3d_box() will return problematic bboxes
-                    gt_bbox = construct_bbox_corners(gt_obb[0:3], gt_obb[3:6])
-                    # pred_bboxes.append(pred_bbox)
-                    gt_bboxes.append(gt_bbox)
-                    ious.append(max_iou)
+                    best_cat_ious.append(max_iou)
 
-                    # construct the multiple mask
-                    multiple.append(data_dict["unique_multiple_list"][i][j].item())
+    # reconstruct
+    if not is_eval:
+        for i in range(batch_size):
+            candidates = torch.arange(num_proposal)[pred_masks[i].bool()]
+            for j in range(len_num_max):
+                if j < lang_num[i]:
+                    gt_ref_idx = gt_ref[i][j]
+                    gt_obb = config.param2obb(
+                        gt_center[i, gt_ref_idx, 0:3].detach().cpu().numpy(),
+                        gt_heading_class[i, gt_ref_idx].detach().cpu().numpy(),
+                        gt_heading_residual[i, gt_ref_idx].detach().cpu().numpy(),
+                        gt_size_class[i, gt_ref_idx].detach().cpu().numpy(),
+                        gt_size_residual[i, gt_ref_idx].detach().cpu().numpy()
+                    )
+                    gt_bbox = get_3d_box(gt_obb[3:6], gt_obb[6], gt_obb[0:3])
 
-                    # construct the others mask
-                    flag = 1 if data_dict["object_cat_list"][i][j] == 17 else 0
-                    others.append(flag)
+                    pred_ref_rec_idx = pred_ref_rec[i][j]
+                    pred_center_rec_ids = pred_center[i][pred_ref_rec_idx]
+                    pred_heading_rec_ids = pred_heading[i][pred_ref_rec_idx]
+                    pred_box_size_rec_ids = pred_box_size[i][pred_ref_rec_idx]
+                    pred_bbox_rec = get_3d_box(pred_box_size_rec_ids, pred_heading_rec_ids, pred_center_rec_ids)
+                    rec_iou = eval_ref_one_sample(pred_bbox_rec, gt_bbox)
+                    rec_ious.append(rec_iou)
+
+    # best
+    if use_best:
+        for i in range(batch_size):
+            for j in range(len_num_max):
+                if j < lang_num[i]:
+                    gt_ref_idx = gt_ref[i][j]
+                    gt_obb = config.param2obb(
+                        gt_center[i, gt_ref_idx, 0:3].detach().cpu().numpy(),
+                        gt_heading_class[i, gt_ref_idx].detach().cpu().numpy(),
+                        gt_heading_residual[i, gt_ref_idx].detach().cpu().numpy(),
+                        gt_size_class[i, gt_ref_idx].detach().cpu().numpy(),
+                        gt_size_residual[i, gt_ref_idx].detach().cpu().numpy()
+                    )
+                    gt_bbox = get_3d_box(gt_obb[3:6], gt_obb[6], gt_obb[0:3])
+                    max_iou = 0
+                    for pred_ref_idx in range(256):
+                        pred_center_ids = pred_center[i][pred_ref_idx]
+                        pred_heading_ids = pred_heading[i][pred_ref_idx]
+                        pred_box_size_ids = pred_box_size[i][pred_ref_idx]
+                        pred_bbox = get_3d_box(pred_box_size_ids, pred_heading_ids, pred_center_ids)
+                        iou = eval_ref_one_sample(pred_bbox, gt_bbox)
+                        if iou > max_iou:
+                            max_iou = iou
+                    best_ious.append(max_iou)
+
+    # rand
+    if use_random:
+        for i in range(batch_size):
+            candidates = torch.arange(num_proposal)[pred_masks[i].bool()]
+            for j in range(len_num_max):
+                if j < lang_num[i]:
+                    gt_ref_idx = gt_ref[i][j]
+                    gt_obb = config.param2obb(
+                        gt_center[i, gt_ref_idx, 0:3].detach().cpu().numpy(),
+                        gt_heading_class[i, gt_ref_idx].detach().cpu().numpy(),
+                        gt_heading_residual[i, gt_ref_idx].detach().cpu().numpy(),
+                        gt_size_class[i, gt_ref_idx].detach().cpu().numpy(),
+                        gt_size_residual[i, gt_ref_idx].detach().cpu().numpy()
+                    )
+                    gt_bbox = get_3d_box(gt_obb[3:6], gt_obb[6], gt_obb[0:3])
+                    if candidates.shape[0] == 0:
+                        pred_ref_idx = random.randint(0, 255)
+                    else:
+                        chosen_idx = torch.randperm(candidates.shape[0])[0]
+                        pred_ref_idx = candidates[chosen_idx]
+                    pred_center_ids = pred_center[i][pred_ref_idx]
+                    pred_heading_ids = pred_heading[i][pred_ref_idx]
+                    pred_box_size_ids = pred_box_size[i][pred_ref_idx]
+                    pred_bbox = get_3d_box(pred_box_size_ids, pred_heading_ids, pred_center_ids)
+                    iou = eval_ref_one_sample(pred_bbox, gt_bbox)
+                    rand_ious.append(iou)
 
     # lang
-    if use_lang_classifier:
-        object_cat = data_dict["object_cat_list"].reshape(batch_size*len_num_max)
-        data_dict["lang_acc"] = (torch.argmax(data_dict['lang_scores'], 1) == object_cat).float().mean()
-    else:
-        data_dict["lang_acc"] = torch.zeros(1)[0].cuda()
-    # print(data_dict["lang_acc"])
+    # if use_lang_classifier:
+    #     object_cat = data_dict["object_cat_list"].reshape(batch_size*len_num_max)
+    #     data_dict["lang_acc"] = (torch.argmax(data_dict['lang_scores'], 1) == object_cat).float().mean()
+    # else:
+    #     data_dict["lang_acc"] = torch.zeros(1)[0].cuda()
 
     # store
     data_dict["ref_iou"] = ious
     data_dict["ref_iou_0.1"] = np.array(ious)[np.array(ious) >= 0.1].shape[0] / np.array(ious).shape[0]
     data_dict["ref_iou_0.25"] = np.array(ious)[np.array(ious) >= 0.25].shape[0] / np.array(ious).shape[0]
     data_dict["ref_iou_0.5"] = np.array(ious)[np.array(ious) >= 0.5].shape[0] / np.array(ious).shape[0]
+
+    data_dict["top5_iou_0.1"] = np.array(top5_ious)[np.array(top5_ious) >= 0.1].shape[0] / np.array(top5_ious).shape[0]
+    data_dict["top5_iou_0.25"] = np.array(top5_ious)[np.array(top5_ious) >= 0.25].shape[0] / np.array(top5_ious).shape[0]
+    data_dict["top5_iou_0.5"] = np.array(top5_ious)[np.array(top5_ious) >= 0.5].shape[0] / np.array(top5_ious).shape[0]
+
     if not is_eval:
         data_dict["rec_iou_0.1"] = np.array(rec_ious)[np.array(rec_ious) >= 0.1].shape[0] / np.array(rec_ious).shape[0]
         data_dict["rec_iou_0.25"] = np.array(rec_ious)[np.array(rec_ious) >= 0.25].shape[0] / np.array(rec_ious).shape[0]
@@ -313,23 +368,52 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
         data_dict["rec_iou_0.25"] = 0.
         data_dict["rec_iou_0.5"] = 0.
 
+    if use_cat_rand:
+        data_dict["rand_iou_0.1"] = np.array(cat_rand_ious)[np.array(cat_rand_ious) >= 0.1].shape[0] / np.array(cat_rand_ious).shape[0]
+        data_dict["rand_iou_0.25"] = np.array(cat_rand_ious)[np.array(cat_rand_ious) >= 0.25].shape[0] / np.array(cat_rand_ious).shape[0]
+        data_dict["rand_iou_0.5"] = np.array(cat_rand_ious)[np.array(cat_rand_ious) >= 0.5].shape[0] / np.array(cat_rand_ious).shape[0]
+    else:
+        data_dict["rand_iou_0.1"] = 0.
+        data_dict["rand_iou_0.25"] = 0.
+        data_dict["rand_iou_0.5"] = 0.
+
+    if use_best_in_cat:
+        data_dict["upper_iou_0.1"] = np.array(best_cat_ious)[np.array(best_cat_ious) >= 0.1].shape[0] / np.array(best_cat_ious).shape[0]
+        data_dict["upper_iou_0.25"] = np.array(best_cat_ious)[np.array(best_cat_ious) >= 0.25].shape[0] / np.array(best_cat_ious).shape[0]
+        data_dict["upper_iou_0.5"] = np.array(best_cat_ious)[np.array(best_cat_ious) >= 0.5].shape[0] / np.array(best_cat_ious).shape[0]
+    else:
+        data_dict["upper_iou_0.1"] = 0.
+        data_dict["upper_iou_0.25"] = 0.
+        data_dict["upper_iou_0.5"] = 0.
+
+    if use_random:
+        data_dict["ref_iou_0.1"] = np.array(rand_ious)[np.array(rand_ious) >= 0.1].shape[0] / np.array(rand_ious).shape[0]
+        data_dict["ref_iou_0.25"] = np.array(rand_ious)[np.array(rand_ious) >= 0.25].shape[0] / np.array(rand_ious).shape[0]
+        data_dict["ref_iou_0.5"] = np.array(rand_ious)[np.array(rand_ious) >= 0.5].shape[0] / np.array(rand_ious).shape[0]
+
+    if use_best:
+        data_dict["ref_iou_0.1"] = np.array(best_ious)[np.array(best_ious) >= 0.1].shape[0] / np.array(best_ious).shape[0]
+        data_dict["ref_iou_0.25"] = np.array(best_ious)[np.array(best_ious) >= 0.25].shape[0] / np.array(best_ious).shape[0]
+        data_dict["ref_iou_0.5"] = np.array(best_ious)[np.array(best_ious) >= 0.5].shape[0] / np.array(best_ious).shape[0]
+
     data_dict["ref_multiple_mask"] = multiple
     data_dict["ref_others_mask"] = others
     data_dict["pred_bboxes"] = pred_bboxes
     data_dict["gt_bboxes"] = gt_bboxes
 
-    if use_cat_rand or use_random or use_best_in_cat:
-        print(data_dict["ref_iou_0.1"], data_dict["ref_iou_0.25"], data_dict["ref_iou_0.5"])
+    # if use_cat_rand or use_random or use_best_in_cat:
+    #     print(data_dict["ref_iou_0.1"], data_dict["ref_iou_0.25"], data_dict["ref_iou_0.5"])
     # --------------------------------------------
     # Some other statistics
-    obj_pred_val = torch.argmax(data_dict['objectness_scores'], 2)  # B,K
-    obj_acc = torch.sum(
-        (obj_pred_val == data_dict['objectness_label'].long()).float() * data_dict['objectness_mask']) / (
-                          torch.sum(data_dict['objectness_mask']) + 1e-6)
-    data_dict['obj_acc'] = obj_acc
+    # obj_pred_val = torch.argmax(data_dict['objectness_scores'], 2)  # B,K
+    # obj_acc = torch.sum(
+    #     (obj_pred_val == data_dict['objectness_label'].long()).float() * data_dict['objectness_mask']) / (
+    #                       torch.sum(data_dict['objectness_mask']) + 1e-6)
+    data_dict['obj_acc'] = torch.zeros(1)[0].cuda()
     # detection semantic classification
-    sem_cls_label = torch.gather(data_dict['sem_cls_label'], 1,
-                                 data_dict['object_assignment'])  # select (B,K) from (B,K2)
-    sem_match = (sem_cls_label == sem_cls_pred).float()
-    data_dict["sem_acc"] = (sem_match * data_dict["pred_mask"]).sum() / (data_dict["pred_mask"].sum() + 1e-7)
+    # sem_cls_label = torch.gather(data_dict['sem_cls_label'], 1,
+    #                              data_dict['object_assignment'])  # select (B,K) from (B,K2)
+    # sem_match = (sem_cls_label == sem_cls_pred).float()
+    # data_dict["sem_acc"] = (sem_match * data_dict["pred_mask"]).sum() / (data_dict["pred_mask"].sum() + 1e-7)
+    data_dict["sem_acc"] = torch.zeros(1)[0].cuda()
     return data_dict

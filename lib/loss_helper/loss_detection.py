@@ -84,7 +84,7 @@ def compute_objectness_loss(data_dict):
             within [0,num_gt_object-1]
     """
     # Associate proposal and GT objects by point-to-point distances
-    aggregated_vote_xyz = data_dict['aggregated_vote_xyz']
+    aggregated_vote_xyz = data_dict['query_points_xyz']
     gt_center = data_dict['center_label'][:, :, 0:3]
     B = gt_center.shape[0]
     K = aggregated_vote_xyz.shape[1]
@@ -102,15 +102,16 @@ def compute_objectness_loss(data_dict):
     objectness_mask[euclidean_dist1 > FAR_THRESHOLD] = 1
 
     # Compute objectness loss
-    objectness_scores = data_dict['objectness_scores']
-    criterion = nn.CrossEntropyLoss(torch.Tensor(OBJECTNESS_CLS_WEIGHTS).cuda(), reduction='none')
-    objectness_loss = criterion(objectness_scores.transpose(2, 1), objectness_label)
-    objectness_loss = torch.sum(objectness_loss * objectness_mask) / (torch.sum(objectness_mask) + 1e-6)
+    # objectness_scores = data_dict['objectness_scores']
+    # criterion = nn.CrossEntropyLoss(torch.Tensor(OBJECTNESS_CLS_WEIGHTS).cuda(), reduction='none')
+    # # print(objectness_scores.transpose(2, 1).shape, objectness_label.shape)
+    # objectness_loss = criterion(objectness_scores.transpose(2, 1), objectness_label)
+    # objectness_loss = torch.sum(objectness_loss * objectness_mask) / (torch.sum(objectness_mask) + 1e-6)
 
     # Set assignment
     object_assignment = ind1  # (B,K) with values in 0,1,...,K2-1
 
-    return objectness_loss, objectness_label, objectness_mask, object_assignment
+    return None, objectness_label, objectness_mask, object_assignment
 
 
 def compute_box_loss(data_dict, config):

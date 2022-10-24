@@ -31,9 +31,9 @@ class LangModule(nn.Module):
             nn.Linear(lang_size, num_text_classes)
         )
 
-        self.fc = nn.Linear(256, 128)
+        self.fc = nn.Linear(hidden_size, hidden_size)
         self.dropout = nn.Dropout(p=.1)
-        self.layer_norm = nn.LayerNorm(128)
+        self.layer_norm = nn.LayerNorm(hidden_size)
         # self.mhatt = MultiHeadAttention(d_model=128, d_k=16, d_v=16, h=4, dropout=.1, identity_map_reordering=False,
         #                                 attention_module=None,
         #                                 attention_module_kwargs=None)
@@ -88,7 +88,6 @@ class LangModule(nn.Module):
             mask_queries[i, cap_len[i]:] = 0
         attention_mask = (mask_queries == 0).unsqueeze(1).unsqueeze(1).cuda()  # (b_s, 1, 1, seq_len)
         data_dict["attention_mask"] = attention_mask
-
         lang_fea = F.relu(self.fc(cap_emb))  # batch_size, n, hidden_size
         lang_fea = self.dropout(lang_fea)
         lang_fea = self.layer_norm(lang_fea)
@@ -110,33 +109,30 @@ class LangModule(nn.Module):
         return data_dict
 
     def masked_lang_feat(self, data_dict):
-        with torch.no_grad():
-            self.eval()
-            word_embs = data_dict["ground_lang_feat_list"]  # B * 32 * MAX_DES_LEN * LEN(300)
-            lang_len = data_dict["ground_lang_len_list"]
-            batch_size, len_num_max, max_des_len = word_embs.shape[:3]
-            masks_list = data_dict["all_masks_list"]
-            masks_list = masks_list.reshape(batch_size * len_num_max, max_des_len)
-            word_embs = word_embs.reshape(batch_size * len_num_max, max_des_len, -1)
-            word_embs = word_embs.masked_fill(masks_list.unsqueeze(-1) == 1, 0.)
-            lang_len = lang_len.reshape(batch_size * len_num_max)
+        word_embs = data_dict["ground_lang_feat_list"]  # B * 32 * MAX_DES_LEN * LEN(300)
+        lang_len = data_dict["ground_lang_len_list"]
+        batch_size, len_num_max, max_des_len = word_embs.shape[:3]
+        masks_list = data_dict["all_masks_list"]
+        masks_list = masks_list.reshape(batch_size * len_num_max, max_des_len)
+        word_embs = word_embs.reshape(batch_size * len_num_max, max_des_len, -1)
+        word_embs = word_embs.masked_fill(masks_list.unsqueeze(-1) == 1, 0.)
+        lang_len = lang_len.reshape(batch_size * len_num_max)
 
-            # lang_feat = pack_padded_sequence(word_embs, lang_len, batch_first=True, enforce_sorted=False)
-            lang_feat = pack_padded_sequence(word_embs, lang_len.cpu(), batch_first=True, enforce_sorted=False)
+        # lang_feat = pack_padded_sequence(word_embs, lang_len, batch_first=True, enforce_sorted=False)
+        lang_feat = pack_padded_sequence(word_embs, lang_len.cpu(), batch_first=True, enforce_sorted=False)
 
-            out, lang_last = self.gru(lang_feat)
+        out, lang_last = self.gru(lang_feat)
 
-            padded = pad_packed_sequence(out, batch_first=True)
-            cap_emb, cap_len = padded
-            if self.use_bidir:
-                cap_emb = (cap_emb[:, :, :int(cap_emb.shape[2] / 2)] + cap_emb[:, :, int(cap_emb.shape[2] / 2):]) / 2
+        padded = pad_packed_sequence(out, batch_first=True)
+        cap_emb, cap_len = padded
+        if self.use_bidir:
+            cap_emb = (cap_emb[:, :, :int(cap_emb.shape[2] / 2)] + cap_emb[:, :, int(cap_emb.shape[2] / 2):]) / 2
 
-            lang_fea = F.relu(self.fc(cap_emb))  # batch_size, n, hidden_size
-            lang_fea = self.dropout(lang_fea)
-            lang_fea = self.layer_norm(lang_fea).reshape(batch_size, len_num_max, lang_fea.shape[1], -1)
-            data_dict["enc_lang_feat"] = lang_fea
-            self.train()
-            return lang_fea
+        lang_fea = F.relu(self.fc(cap_emb))  # batch_size, n, hidden_size
+        lang_fea = self.dropout(lang_fea)
+        lang_fea = self.layer_norm(lang_fea).reshape(batch_size, len_num_max, lang_fea.shape[1], -1)
+        data_dict["masked_lang_feat"] = lang_fea
+        return lang_fea
 
     def eval_lang_cls(self, data_dict):
         with torch.no_grad():

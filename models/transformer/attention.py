@@ -331,7 +331,7 @@ class MultiHeadAttention(nn.Module):
             if attention_module_kwargs is not None:
                 self.attention = attention_module(d_model=d_model, d_k=d_k, d_v=d_v, h=h, **attention_module_kwargs)
             else:
-                self.attention = attention_module(d_model=d_model, d_k=d_k, d_v=d_v, h=h, m = 20)
+                self.attention = attention_module(d_model=d_model, d_k=d_k, d_v=d_v, h=h, m=20)
         else:
             self.attention = ScaledDotProductAttention(d_model=d_model, d_k=d_k, d_v=d_v, h=h)
         self.dropout = nn.Dropout(p=dropout)

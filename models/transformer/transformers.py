@@ -144,7 +144,7 @@ class DualTransformer(nn.Module):
         self.decoder1 = TransformerDecoder(num_decoder_layers1, d_model, num_heads, dropout)
         self.decoder2 = TransformerDecoder(num_decoder_layers2, d_model, num_heads, dropout)
 
-    def forward(self, src1, src_mask1, src2, src_mask2, decoding, enc_out=None):
+    def forward(self, src1, src_mask1, src2, src_mask2, decoding=1, enc_out=None):
         assert decoding in [1, 2]
         if decoding == 1:
             if enc_out is None:

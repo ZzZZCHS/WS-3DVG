@@ -47,7 +47,7 @@ def compute_reference_loss(data_dict, config, no_reference=False):
     gt_size_class_list = data_dict['ref_size_class_label_list'].cpu().numpy()  # B
     gt_size_residual_list = data_dict['ref_size_residual_label_list'].cpu().numpy()  # B,3
     # convert gt bbox parameters to bbox corners
-    batch_size, num_proposals = data_dict['aggregated_vote_features'].shape[:2]
+    batch_size, num_proposals = data_dict['query_points_feature'].shape[:2]
     batch_size, len_nun_max = gt_center_list.shape[:2]
     lang_num = data_dict["lang_num"]
     max_iou_1 = 0
@@ -64,7 +64,8 @@ def compute_reference_loss(data_dict, config, no_reference=False):
     loss = 0.
     gt_labels = np.zeros((batch_size, len_nun_max, num_proposals))
     for i in range(batch_size):
-        objectness_masks = data_dict['objectness_scores'].max(2)[1].float().cpu().numpy() # batch_size, num_proposals
+        # objectness_masks = data_dict['objectness_scores'].max(2)[1].float().cpu().numpy() # batch_size, num_proposals
+        objectness_masks = torch.round(data_dict["objectness_scores"].sigmoid()).squeeze(-1).cpu().numpy()
         gt_obb_batch = config.param2obb_batch(gt_center_list[i][:, 0:3], gt_heading_class_list[i],
                                               gt_heading_residual_list[i],
                                               gt_size_class_list[i], gt_size_residual_list[i])
@@ -79,8 +80,8 @@ def compute_reference_loss(data_dict, config, no_reference=False):
                 pred_bbox_batch = get_3d_box_batch(pred_box_size_batch, pred_heading_batch, pred_center_batch)
                 ious = box3d_iou_batch(pred_bbox_batch, np.tile(gt_bbox_batch[j], (num_proposals, 1, 1)))
 
-                if data_dict["istrain"][0] == 1 and not no_reference and data_dict["random"] < 0.5:
-                    ious = ious * objectness_masks[i]
+                # if data_dict["istrain"][0] == 1 and not no_reference and data_dict["random"] < 0.5:
+                #     ious = ious * objectness_masks[i]
 
                 ious_ind = ious.argmax()
                 max_ious = ious[ious_ind]

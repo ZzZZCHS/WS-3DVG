@@ -83,9 +83,9 @@ class ProposalModule(nn.Module):
 
         # Farthest point sampling (FPS) on votes
         xyz, features, sample_inds = self.vote_aggregation(xyz, features)
-        data_dict['aggregated_vote_xyz'] = xyz # (batch_size, num_proposal, 3)
-        data_dict['aggregated_vote_features'] = features.permute(0, 2, 1).contiguous() # (batch_size, num_proposal, 128)
-        data_dict['aggregated_vote_inds'] = sample_inds # (batch_size, num_proposal,) # should be 0,1,2,...,num_proposal
+        data_dict['query_points_xyz'] = xyz # (batch_size, num_proposal, 3)
+        data_dict['query_points_feature'] = features.permute(0, 2, 1).contiguous() # (batch_size, num_proposal, 128)
+        data_dict['query_points_sample_inds'] = sample_inds # (batch_size, num_proposal,) # should be 0,1,2,...,num_proposal
 
         # --------- PROPOSAL GENERATION ---------
         # data_dict = self.proposal(features, data_dict)
@@ -103,7 +103,7 @@ class ProposalModule(nn.Module):
     def decode_pred_box(self, data_dict):
         # predicted bbox
 
-        data_dict["pred_bbox_feature"] = data_dict["aggregated_vote_features"]
+        data_dict["pred_bbox_feature"] = data_dict["query_points_feature"]
         # data_dict["pred_bbox_mask"] = data_dict["objectness_scores"].argmax(-1)
         # data_dict["pred_bbox_sems"] = data_dict["sem_cls_scores"].argmax(-1)
 

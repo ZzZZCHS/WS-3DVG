@@ -7,7 +7,7 @@ import random
 
 
 class MatchModule(nn.Module):
-    def __init__(self, num_proposals=256, lang_size=256, hidden_size=128, lang_num_size=300, det_channel=128, head=4, num_target=8):
+    def __init__(self, num_proposals=256, lang_size=256, hidden_size=128, lang_num_size=300, det_channel=128, head=8, num_target=8):
         super().__init__()
         self.num_proposals = num_proposals
         self.num_target = num_target
@@ -35,7 +35,7 @@ class MatchModule(nn.Module):
             scores: (B,num_proposal,2+3+NH*2+NS*4)
         """
  
-        objectness_masks = data_dict['objectness_scores'].max(2)[1].float().unsqueeze(2)  # batch_size, num_proposals, 1
+        # objectness_masks = data_dict['objectness_scores'].max(2)[1].float().unsqueeze(2)  # batch_size, num_proposals, 1
         features = data_dict["bbox_feature"]  # batch_size, num_proposals, feat_size
 
         batch_size, num_proposal = features.shape[:2]

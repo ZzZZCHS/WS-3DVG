@@ -148,7 +148,8 @@ def predict(args):
             )
             """
 
-            objectness_preds_batch = torch.argmax(data_dict['objectness_scores'], 2).long()
+            # objectness_preds_batch = torch.argmax(data_dict['objectness_scores'], 2).long()
+            objectness_preds_batch = torch.round(data_dict["objectness_scores"].sigmoid()).squeeze(-1).long()
 
             if POST_DICT:
                 _ = parse_predictions(data_dict, POST_DICT)
