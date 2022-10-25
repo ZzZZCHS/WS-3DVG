@@ -240,7 +240,7 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
                     iou = eval_ref_one_sample(pred_bbox, gt_bbox)
                     cat_rand_ious.append(iou)
 
-    # bese in cat
+    # best in cat
     if use_best_in_cat:
         for i in range(batch_size):
             for j in range(len_num_max):

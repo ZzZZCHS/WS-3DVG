@@ -22,7 +22,7 @@ from data.scannet.model_util_scannet import ScannetDatasetConfig, SunToScannetDa
 from data.sunrgbd.model_util_sunrgbd import SunrgbdDatasetConfig
 from lib.joint.dataset import ScannetReferenceDataset
 from lib.joint.solver_3djcg import Solver
-from lib.configs.config_joint import CONF
+from lib.configs.config import CONF
 from models.jointnet.jointnet import JointNet
 from scripts.utils.AdamW import AdamW
 from scripts.utils.script_utils import set_params_lr_dict
@@ -40,7 +40,7 @@ SCAN2CAD_ROTATION = None # json.load(open(os.path.join(CONF.PATH.SCAN2CAD, "scan
 
 # constants
 # DC = SunToScannetDatasetConfig()
-DC = ScannetDatasetConfig()
+DC = ScannetDatasetConfig() if CONF.pretrain_data == "scannet" else SunToScannetDatasetConfig()
 import crash_on_ipy
 
 
@@ -72,18 +72,18 @@ def get_dataloader(args, scanrefer, scanrefer_new, all_scene_list, split, config
     else:
         bs = args.val_batch_size
 
-    # if args.distribute and split == "train":
-    #     sampler = torch.utils.data.distributed.DistributedSampler(dataset)
-    #     dataloader = torch.utils.data.DataLoader(dataset,
-    #                                              batch_size=bs,
-    #                                              shuffle=False,
-    #                                              num_workers=1,
-    #                                              worker_init_fn=my_worker_init_fn,
-    #                                              sampler=sampler,
-    #                                              drop_last=True)
-    # else:
-    #     dataloader = DataLoader(dataset, batch_size=bs, shuffle=True if split == "train" else False, num_workers=1)
-    dataloader = DataLoader(dataset, batch_size=bs, shuffle=False, num_workers=1)
+    if args.distribute and split == "train":
+        sampler = torch.utils.data.distributed.DistributedSampler(dataset)
+        dataloader = torch.utils.data.DataLoader(dataset,
+                                                 batch_size=bs,
+                                                 shuffle=False,
+                                                 num_workers=1,
+                                                 worker_init_fn=my_worker_init_fn,
+                                                 sampler=sampler,
+                                                 drop_last=True)
+    else:
+        dataloader = DataLoader(dataset, batch_size=bs, shuffle=True if split == "train" else False, num_workers=1)
+    # dataloader = DataLoader(dataset, batch_size=bs, shuffle=False, num_workers=1)
 
     return dataset, dataloader
 
@@ -141,36 +141,12 @@ def get_model(args, dataset):
     output = model.load_state_dict(pretrained_param, strict=False)
     print('load Result: ', output)
     """
-    # if args.use_pretrained:
-    #     print("loading pretrained VoteNet...")
-    #     pretrained_path = os.path.join(CONF.PATH.BASE, args.use_pretrained, "model_last.pth")
-    #     print("pretrained_path", pretrained_path, flush=True)
-    #     pretrained_model = JointNet(
-    #         num_class=DC.num_class,
-    #         vocabulary=dataset.vocabulary,
-    #         embeddings=dataset.glove,
-    #         num_heading_bin=DC.num_heading_bin,
-    #         num_size_cluster=DC.num_size_cluster,
-    #         mean_size_arr=DC.mean_size_arr,
-    #         num_proposal=args.num_proposals,
-    #         input_feature_dim=input_channels,
-    #         no_caption=True
-    #     )
-    #     pretrained_model.load_state_dict(torch.load(pretrained_path), strict=False)
-    #     # mount
-    #     model.backbone_net = pretrained_model.backbone_net
-    #     model.vgen = pretrained_model.vgen
-    #     model.proposal = pretrained_model.proposal
-    #     model.relation = pretrained_model.relation
-    # print("loading pretrained VoteNet...")
-    # pretrained_votenet_weights = torch.load(CONF.PATH.VOTENET_PRETRAIN)
-    # # print(pretrained_votenet_weights["model_state_dict"].keys())
-    # model.load_state_dict(pretrained_votenet_weights["model_state_dict"], strict=False)
-
-    print("loading predtrained GroupFree...")
-    pretrained_groupfree_weights = torch.load(CONF.PATH.GROUPFREE_PRETRAIN)
-    # print(pretrained_groupfree_weights.keys())
-    model.group_free.load_state_dict(pretrained_groupfree_weights, strict=False)
+    if args.pretrain_model_on:
+        if args.pretrain_model == "groupfree":
+            print("loading predtrained GroupFree...")
+            pretrained_groupfree_weights = torch.load(CONF.PATH.GROUPFREE_PRETRAIN)
+            # print(pretrained_groupfree_weights.keys())
+            model.group_free.load_state_dict(pretrained_groupfree_weights, strict=False)
 
     # print("loading pretrained LangModule weights...")
     # pretrained_lang_weights = torch.load(CONF.PATH.LANGMODULE_PRETRAIN)
@@ -199,18 +175,6 @@ def get_num_params(model):
 def get_solver(args, dataset, dataloader):
     # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = get_model(args, dataset["train"])
-    # TODO
-    """
-    weight_dict = {
-        'backbone_net': {'lr': 0.0001},
-        'vgen': {'lr': 0.0001},
-        'proposal': {'lr': 0.0001},
-        'detr': {'lr': 0.0001},
-        'lang': {'lr': 0.0005},
-        'relation': {'lr': 0.0005},
-        'caption': {'lr': 0.0005},
-    }
-    """
     weight_dict = {
         # 'lang': {'lr': 0.003},
         # 'relation': {'lr': 0.003},
@@ -291,10 +255,10 @@ def save_info(args, root, num_params, dataset):
         info[key] = value
     
     info["num_train"] = len(dataset["train"])
-    info["num_eval_train"] = len(dataset["eval"]["train"])
+    # info["num_eval_train"] = len(dataset["eval"]["train"])
     info["num_eval_val"] = len(dataset["eval"]["val"])
     info["num_train_scenes"] = len(dataset["train"].scene_list)
-    info["num_eval_train_scenes"] = len(dataset["eval"]["train"].scene_list)
+    # info["num_eval_train_scenes"] = len(dataset["eval"]["train"].scene_list)
     info["num_eval_val_scenes"] = len(dataset["eval"]["val"].scene_list)
     info["num_params"] = num_params
 
@@ -309,18 +273,18 @@ def get_scannet_scene_list(split):
 def get_scanrefer(args):
     if args.dataset == "ScanRefer":
         scanrefer_train = json.load(open(os.path.join(CONF.PATH.DATA, "Masked_ScanRefer_filtered_train.json")))
-        scanrefer_eval_train = json.load(open(os.path.join(CONF.PATH.DATA, "Masked_ScanRefer_filtered_train.json")))
+        # scanrefer_eval_train = json.load(open(os.path.join(CONF.PATH.DATA, "Masked_ScanRefer_filtered_train.json")))
         scanrefer_eval_val = json.load(open(os.path.join(CONF.PATH.DATA, "ScanRefer_filtered_val.json")))
     elif args.dataset == "ReferIt3D":
         scanrefer_train = json.load(open(os.path.join(CONF.PATH.DATA, "nr3d_train.json")))
-        scanrefer_eval_train = json.load(open(os.path.join(CONF.PATH.DATA, "nr3d_train.json")))
+        # scanrefer_eval_train = json.load(open(os.path.join(CONF.PATH.DATA, "nr3d_train.json")))
         scanrefer_eval_val = json.load(open(os.path.join(CONF.PATH.DATA, "nr3d_val.json")))
     else:
         raise ValueError("Invalid dataset.")
 
     if args.debug:
         scanrefer_train = [SCANREFER_TRAIN[0]]
-        scanrefer_eval_train = [SCANREFER_TRAIN[0]]
+        # scanrefer_eval_train = [SCANREFER_TRAIN[0]]
         scanrefer_eval_val = [SCANREFER_TRAIN[0]]
 
     if args.no_caption and args.no_reference:
@@ -333,11 +297,11 @@ def get_scanrefer(args):
             data["scene_id"] = scene_id
             new_scanrefer_train.append(data)
 
-        new_scanrefer_eval_train = []
-        for scene_id in train_scene_list:
-            data = deepcopy(SCANREFER_TRAIN[0])
-            data["scene_id"] = scene_id
-            new_scanrefer_eval_train.append(data)
+        # new_scanrefer_eval_train = []
+        # for scene_id in train_scene_list:
+        #     data = deepcopy(SCANREFER_TRAIN[0])
+        #     data["scene_id"] = scene_id
+        #     new_scanrefer_eval_train.append(data)
 
         new_scanrefer_eval_val = []
         for scene_id in val_scene_list:
@@ -370,16 +334,16 @@ def get_scanrefer(args):
 
         #注意：new_scanrefer_eval_train实际上没用
         # eval on train
-        new_scanrefer_eval_train = []
-        scanrefer_eval_train_new = []
-        for scene_id in train_scene_list:
-            data = deepcopy(SCANREFER_TRAIN[0])
-            data["scene_id"] = scene_id
-            new_scanrefer_eval_train.append(data)
-            scanrefer_eval_train_new_scene = []
-            for i in range(args.lang_num_max):
-                scanrefer_eval_train_new_scene.append(data)
-            scanrefer_eval_train_new.append(scanrefer_eval_train_new_scene)
+        # new_scanrefer_eval_train = []
+        # scanrefer_eval_train_new = []
+        # for scene_id in train_scene_list:
+        #     data = deepcopy(SCANREFER_TRAIN[0])
+        #     data["scene_id"] = scene_id
+        #     new_scanrefer_eval_train.append(data)
+        #     scanrefer_eval_train_new_scene = []
+        #     for i in range(args.lang_num_max):
+        #         scanrefer_eval_train_new_scene.append(data)
+        #     scanrefer_eval_train_new.append(scanrefer_eval_train_new_scene)
 
         new_scanrefer_eval_val = scanrefer_eval_val
         scanrefer_eval_val_new = []
@@ -400,19 +364,19 @@ def get_scanrefer(args):
             scanrefer_eval_val_new_scene.append(data)
         scanrefer_eval_val_new.append(scanrefer_eval_val_new_scene)
 
-        new_scanrefer_eval_val2 = []
-        scanrefer_eval_val_new2 = []
-        for scene_id in val_scene_list:
-            data = deepcopy(SCANREFER_VAL[0])
-            data["scene_id"] = scene_id
-            new_scanrefer_eval_val2.append(data)
-            scanrefer_eval_val_new_scene2 = []
-            for i in range(args.lang_num_max):
-                scanrefer_eval_val_new_scene2.append(data)
-            scanrefer_eval_val_new2.append(scanrefer_eval_val_new_scene2)
+        # new_scanrefer_eval_val2 = []
+        # scanrefer_eval_val_new2 = []
+        # for scene_id in val_scene_list:
+        #     data = deepcopy(SCANREFER_VAL[0])
+        #     data["scene_id"] = scene_id
+        #     new_scanrefer_eval_val2.append(data)
+        #     scanrefer_eval_val_new_scene2 = []
+        #     for i in range(args.lang_num_max):
+        #         scanrefer_eval_val_new_scene2.append(data)
+        #     scanrefer_eval_val_new2.append(scanrefer_eval_val_new_scene2)
 
     print("scanrefer_train_new", len(scanrefer_train_new), len(scanrefer_train_new[0]))
-    print("scanrefer_eval_new", len(scanrefer_eval_train_new), len(scanrefer_eval_val_new))
+    print("scanrefer_eval_new", len(scanrefer_eval_val_new))
     sum = 0
     for i in range(len(scanrefer_train_new)):
         sum += len(scanrefer_train_new[i])
@@ -426,36 +390,36 @@ def get_scanrefer(args):
 
     print("using {} dataset".format(args.dataset))
     print("train on {} samples from {} scenes".format(len(new_scanrefer_train), len(train_scene_list)))
-    print("eval on {} scenes from train and {} scenes from val".format(len(new_scanrefer_eval_train), len(new_scanrefer_eval_val)))
+    print("eval on {} scenes from val".format(len(new_scanrefer_eval_val)))
 
-    return new_scanrefer_train, new_scanrefer_eval_train, new_scanrefer_eval_val, new_scanrefer_eval_val2, all_scene_list, scanrefer_train_new, scanrefer_eval_train_new, scanrefer_eval_val_new, scanrefer_eval_val_new2
+    return new_scanrefer_train, new_scanrefer_eval_val, all_scene_list, scanrefer_train_new, scanrefer_eval_val_new
 
 def train(args):
     # init training dataset
     print("preparing data...")
-    scanrefer_train, scanrefer_eval_train, scanrefer_eval_val, scanrefer_eval_val2, all_scene_list, scanrefer_train_new, scanrefer_eval_train_new, scanrefer_eval_val_new, scanrefer_eval_val_new2 = get_scanrefer(args)
+    scanrefer_train, scanrefer_eval_val, all_scene_list, scanrefer_train_new, scanrefer_eval_val_new = get_scanrefer(args)
 
     # 注意：eval_train_dataset实际上没用
     # dataloader
     train_dataset, train_dataloader = get_dataloader(args, scanrefer_train, scanrefer_train_new, all_scene_list, "train", DC, True, SCAN2CAD_ROTATION)
-    eval_train_dataset, eval_train_dataloader = get_dataloader(args, scanrefer_eval_train, scanrefer_eval_train_new, all_scene_list, "val", DC, False, shuffle=False)
+    # eval_train_dataset, eval_train_dataloader = get_dataloader(args, scanrefer_eval_train, scanrefer_eval_train_new, all_scene_list, "val", DC, False, shuffle=False)
     eval_val_dataset, eval_val_dataloader = get_dataloader(args, scanrefer_eval_val, scanrefer_eval_val_new, all_scene_list, "val", DC, False, shuffle=False)
-    eval_val_dataset2, eval_val_dataloader2 = get_dataloader(args, scanrefer_eval_val2, scanrefer_eval_val_new2, all_scene_list, "val", DC, False, shuffle=False)
+    # eval_val_dataset2, eval_val_dataloader2 = get_dataloader(args, scanrefer_eval_val2, scanrefer_eval_val_new2, all_scene_list, "val", DC, False, shuffle=False)
 
     dataset = {
         "train": train_dataset,
         "eval": {
-            "train": eval_train_dataset,
+            # "train": eval_train_dataset,
             "val": eval_val_dataset,
-            "val_scene": eval_val_dataset2
+            # "val_scene": eval_val_dataset2
         }
     }
     dataloader = {
         "train": train_dataloader,
         "eval": {
-            "train": eval_train_dataloader,
+            # "train": eval_train_dataloader,
             "val": eval_val_dataloader,
-            "val_scene": eval_val_dataloader2
+            # "val_scene": eval_val_dataloader2
         }
     }
 
@@ -467,65 +431,6 @@ def train(args):
     solver(args.epoch, args.verbose)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--tag", type=str, help="tag for the training, e.g. cuda_wl", default="")
-    parser.add_argument("--dataset", type=str, help="Choose a dataset: ScanRefer or ReferIt3D", default="ScanRefer")
-    parser.add_argument("--gpu", type=str, help="gpu", default="0")
-    parser.add_argument("--seed", type=int, default=3407, help="random seed")
-    parser.add_argument("--distribute", action="store_true", help="distributed training")
-    parser.add_argument("--local_rank", type=int, help="local ran for DistributedDataParallel")
-    parser.add_argument("--opt_steps", type=int, default=1, help="optimizer steps")
-
-    parser.add_argument("--batch_size", type=int, help="batch size", default=2)
-    parser.add_argument("--val_batch_size", type=int, help="val batch size", default=6)
-    parser.add_argument("--epoch", type=int, help="number of epochs", default=20)
-    parser.add_argument("--verbose", type=int, help="iterations of showing verbose", default=50)
-    parser.add_argument("--val_step", type=int, help="iterations of validating", default=500)
-    parser.add_argument("--lr", type=float, help="learning rate", default=1e-3)
-    parser.add_argument("--wd", type=float, help="weight decay", default=5e-4)
-    parser.add_argument("--amsgrad", action='store_true', help="optimizer with amsgrad")
-
-    parser.add_argument("--hidden_size", type=int, help="hidden size", default=288)
-    parser.add_argument("--lang_num_max", type=int, help="lang num max", default=8)
-    parser.add_argument("--num_points", type=int, default=50000, help="Point Number [default: 40000]")
-    parser.add_argument("--num_proposals", type=int, default=256, help="Proposal number [default: 256]")
-    parser.add_argument("--num_target", type=int, default=16, help="Target proposal number [default: 8]")
-    parser.add_argument("--num_locals", type=int, default=20, help="Number of local objects [default: -1]")
-    parser.add_argument("--num_scenes", type=int, default=-1, help="Number of scenes [default: -1]")
-    parser.add_argument("--num_graph_steps", type=int, default=0, help="Number of graph conv layer [default: 0]")
-    parser.add_argument("--num_ground_epoch", type=int, default=100, help="Number of ground epoch [default: 50]")
-    parser.add_argument("--width", type=int, default=1, help="backbone width")
-
-    parser.add_argument("--criterion", type=str, default="sum", \
-        help="criterion for selecting the best model [choices: bleu-1, bleu-2, bleu-3, bleu-4, cider, rouge, meteor, sum]")
-    
-    parser.add_argument("--query_mode", type=str, default="center", help="Mode for querying the local context, [choices: center, corner]")
-    parser.add_argument("--graph_mode", type=str, default="edge_conv", help="Mode for querying the local context, [choices: graph_conv, edge_conv]")
-    parser.add_argument("--graph_aggr", type=str, default="add", help="Mode for aggregating features, [choices: add, mean, max]")
-
-    parser.add_argument("--coslr", action='store_true', help="cosine learning rate")
-    parser.add_argument("--no_height", action="store_true", default=True, help="Do NOT use height signal in input.")
-    parser.add_argument("--no_augment", action="store_true", default=True, help="Do NOT use height signal in input.")
-    parser.add_argument("--no_detection", action="store_true", default=True, help="Do NOT train the detection module.")
-    parser.add_argument("--no_caption", action="store_true", default=True, help="Do NOT train the caption module.")
-    parser.add_argument("--no_lang_cls", action="store_true", help="Do NOT use language classifier.")
-    parser.add_argument("--no_reference", action="store_true", help="Do NOT train the localization module.")
-
-    parser.add_argument("--use_tf", action="store_true", help="enable teacher forcing in inference.")
-    parser.add_argument("--use_color", action="store_true", help="Use RGB color in input.")
-    parser.add_argument("--use_normal", action="store_true", default=True, help="Use RGB color in input.")
-    parser.add_argument("--use_multiview", action="store_true", default=True, help="Use multiview images.")
-    parser.add_argument("--use_topdown", action="store_true", default=True, help="Use top-down attention for captioning.")
-    parser.add_argument("--use_relation", action="store_true", help="Use object-to-object relation in graph.")
-    parser.add_argument("--use_new", action="store_true", help="Use new Top-down module.")
-    parser.add_argument("--use_orientation", action="store_true", help="Use object-to-object orientation loss in graph.")
-    parser.add_argument("--use_distance", action="store_true", help="Use object-to-object distance loss in graph.")
-    parser.add_argument("--use_bidir", action="store_true", help="Use bi-directional GRU.")
-    parser.add_argument("--use_pretrained", type=str, help="Specify the folder name containing the pretrained detection module.")
-    parser.add_argument("--use_checkpoint", type=str, help="Specify the checkpoint root", default="")
-    
-    parser.add_argument("--debug", action="store_true", help="Debug mode.")
-    args = parser.parse_args()
 
     # # setting
     # os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
@@ -533,18 +438,18 @@ if __name__ == "__main__":
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
 
     # reproducibility
-    os.environ['PYTHONHASHSEED'] = str(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
-    torch.cuda.manual_seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
+    os.environ['PYTHONHASHSEED'] = str(CONF.seed)
+    np.random.seed(CONF.seed)
+    torch.manual_seed(CONF.seed)
+    torch.cuda.manual_seed(CONF.seed)
+    torch.cuda.manual_seed_all(CONF.seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
     # torch.use_deterministic_algorithms(True)
 
-    if args.distribute:
-        torch.cuda.set_device(args.local_rank)
+    if CONF.distribute:
+        torch.cuda.set_device(CONF.local_rank)
         torch.backends.cudnn.benchmark = False
         torch.distributed.init_process_group(backend="nccl", init_method="env://")
 
-    train(args)
+    train(CONF)

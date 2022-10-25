@@ -154,4 +154,4 @@ class LangModule(nn.Module):
             # classify
             lang_score = self.lang_cls(lang_last)
             self.train()
-            return torch.argmax(lang_score, 1)
+            return lang_score

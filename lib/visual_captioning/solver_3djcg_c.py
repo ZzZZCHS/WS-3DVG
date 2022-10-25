@@ -179,8 +179,7 @@ class Solver():
         self.epoch = epoch
         self.verbose = verbose
         self._total_iter["train"] = len(self.dataloader["train"]) * epoch
-        self._total_iter["val"] = (len(self.dataloader["eval"]["train"]) + len(self.dataloader["eval"]["val"])) \
-             * (self._total_iter["train"] / self.val_step)
+        self._total_iter["val"] = len(self.dataloader["eval"]["val"]) * (self._total_iter["train"] / self.val_step)
         
         for epoch_id in range(epoch):
             try:

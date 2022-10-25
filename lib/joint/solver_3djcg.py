@@ -2,21 +2,21 @@
 File Created: Monday, 25th November 2019 1:35:30 pm
 Author: Dave Zhenyu Chen (zhenyu.chen@tum.de)
 '''
-
+import copy
 import os
 import sys
 import time
 from collections import defaultdict
 
+import numpy
 import torch
 import numpy as np
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
 from torch.optim.lr_scheduler import StepLR, MultiStepLR, CosineAnnealingLR
 
-from lib.configs.config_joint import CONF
+from lib.configs.config import CONF
 from lib.loss_helper.loss_joint import get_joint_loss
-from lib.joint.eval_caption import eval_cap
 from lib.joint.eval_ground import get_eval as eval_ground
 from utils.eta import decode_eta
 from lib.pointnet2.pytorch_utils import BNMomentumScheduler
@@ -87,7 +87,7 @@ BEST_REPORT_TEMPLATE = """
 [sco.]  sem_acc: {sem_acc}
 [sco.]  pos_ratio: {pos_ratio}, neg_ratio: {neg_ratio}
 [sco.]  iou_0.1: {iou_1}, iou_0.25: {iou_25}, iou_0.5: {iou_5}
-[sco.]  rand_iou_0.1: {rand_iou_1}, rand_iou_0.25: {rand_iou_25}, rand_iou_0.5: {rand_iou_25}
+[sco.]  rand_iou_0.1: {rand_iou_1}, rand_iou_0.25: {rand_iou_25}, rand_iou_0.5: {rand_iou_5}
 [sco.]  upper_iou_0.1: {upper_iou_1}, upper_iou_0.25: {upper_iou_25}, upper_iou_0.5: {upper_iou_5}
 [sco.]  top5_iou_0.1: {top5_iou_1}, top5_iou_0.25: {top5_iou_25}, top5_iou_0.5: {top5_iou_5}
 [sco.]  rec_iou_0.1: {rec_iou_1}, rec_iou_0.25: {rec_iou_25}, rec_iou_0.5: {rec_iou_5}
@@ -218,15 +218,15 @@ class Solver():
         self.opt_steps = opt_steps
 
     def __call__(self, epoch, verbose):
+        # if CONF.pretrain_model_on:
+        #     self.get_pretrained_data("train", self.dataloader["train"])
+        #     self.get_pretrained_data("val", self.dataloader["eval"]["val"])
+        #     sys.exit()
         # setting
-        # self.get_pretrained_data("train", self.dataloader["train"])
-        # self.get_pretrained_data("val", self.dataloader["eval"]["val"])
-        # sys.exit()
         self.epoch = epoch
         self.verbose = verbose
         self._total_iter["train"] = len(self.dataloader["train"]) * epoch
-        self._total_iter["val"] = (len(self.dataloader["eval"]["train"]) + len(self.dataloader["eval"]["val"])) \
-             * (self._total_iter["train"] / self.val_step)
+        self._total_iter["val"] = len(self.dataloader["eval"]["val"]) * (self._total_iter["train"] / self.val_step)
         
         for epoch_id in range(epoch):
             try:
@@ -274,22 +274,22 @@ class Solver():
     def get_pretrained_data(self, phase, dataloader):
         dataloader = tqdm(dataloader)
         self.model.eval()
-        all_data = defaultdict(list)
-        save_list = [
-            "pred_bbox_feature", "objectness_scores", "sem_cls_scores",
-            "pred_heading", "pred_center", "pred_size", "pred_bbox_corner",
-            "query_points_xyz", "query_points_feature", "query_points_sample_inds"
-        ]
+        all_data = defaultdict(dict)
+        save_list = CONF.PRETRAINED_LIST
         for data_dict in dataloader:
             for key in data_dict:
-                data_dict[key] = data_dict[key].cuda()
+                if key != "scene_id":
+                    data_dict[key] = data_dict[key].cuda()
 
             data_dict = self._forward(data_dict)
-
+            scene_id = data_dict["scene_id"][0]  # batch_size == 1
             for key in save_list:
-                all_data[key].extend(data_dict[key].tolist())
+                # all_data[key].extend(data_dict[key].tolist())
+                if key not in all_data[scene_id]:
+                    all_data[scene_id][key] = copy.deepcopy(data_dict[key][0].detach().cpu().numpy())
 
-        print(phase, len(all_data["pred_bbox_feature"]))
+        print(len(all_data))
+        # print(phase, all_data[scene_id][save_list[0]].shape)
         if phase == "train":
             torch.save(all_data, CONF.PATH.PRETRAINED_TRAIN_DATA)
         else:
@@ -761,7 +761,7 @@ class Solver():
         eta_sec = num_train_iter_left * mean_train_time
         
         num_val_times = num_train_iter_left // self.val_step
-        eta_sec += len(self.dataloader["eval"]["train"]) * num_val_times * mean_est_val_time
+        # eta_sec += len(self.dataloader["eval"]["train"]) * num_val_times * mean_est_val_time
         eta_sec += len(self.dataloader["eval"]["val"]) * num_val_times * mean_est_val_time
         
         eta = decode_eta(eta_sec)

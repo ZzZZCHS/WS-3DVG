@@ -57,8 +57,8 @@ class ProposalModule(nn.Module):
         self.bn2 = torch.nn.BatchNorm1d(128)
 
         # Fix VoteNet
-        for _p in self.parameters():
-            _p.requires_grad = False
+        # for _p in self.parameters():
+        #     _p.requires_grad = False
 
         # self.use_obj_embedding = True
         # self.use_box_embedding = True

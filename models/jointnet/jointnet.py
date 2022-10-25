@@ -48,30 +48,35 @@ class JointNet(nn.Module):
         self.vocab_size = len(vocabulary["idx2word"])
         self.emb_size = emb_size
         self.hidden_size = hidden_size
+        self.args = args
 
-        # --------- VOTENET PROPOSAL GENERATION ---------
-        # Backbone point feature learning
-        # self.backbone_net = Pointnet2Backbone(input_feature_dim=self.input_feature_dim)
+        if args.pretrain_model_on:
+            if args.pretrain_model == "votenet":
+                # --------- VOTENET PROPOSAL GENERATION ---------
+                # Backbone point feature learning
+                self.backbone_net = Pointnet2Backbone(input_feature_dim=self.input_feature_dim)
 
-        # Hough voting
-        # self.vgen = VotingModule(self.vote_factor, 256)
+                # Hough voting
+                self.vgen = VotingModule(self.vote_factor, 256)
 
-        # Fix VoteNet
-        # for _p in self.parameters():
-        #     _p.requires_grad = False
+                # Vote aggregation and object proposal
+                self.pnet = ProposalModule(num_proposal=num_proposal, sampling=sampling, dataset_config=dataset_config, num_target=num_target)
 
-        # Vote aggregation and object proposal
-        # self.pnet = ProposalModule(num_proposal=num_proposal, sampling=sampling, dataset_config=dataset_config, num_target=num_target)
+                # Fix VoteNet
+                for _p in self.parameters():
+                    _p.requires_grad = False
 
-        # --------- GroupFree PROPOSAL GENERATION ---------
-        self.group_free = GroupFreeDetector(
-            input_feature_dim=input_feature_dim,
-            width=width,
-            num_proposal=num_proposal,
-            dataset_config=dataset_config
-        )
-        for _p in self.group_free.parameters():
-            _p.requires_grad = False
+            if args.pretrain_model == "groupfree":
+                # --------- GroupFree PROPOSAL GENERATION ---------
+                self.group_free = GroupFreeDetector(
+                    input_feature_dim=input_feature_dim,
+                    width=width,
+                    num_proposal=num_proposal,
+                    dataset_config=dataset_config,
+                    num_decoder_layers=6 if args.pretrain_data == "scannet" else 0
+                )
+                for _p in self.group_free.parameters():
+                    _p.requires_grad = False
 
         self.relation = RelationModule(hidden_size=hidden_size, num_proposals=num_proposal, det_channel=hidden_size)  # bef 256
 
@@ -110,20 +115,25 @@ class JointNet(nn.Module):
         """
 
         # # hough voting
-        # data_dict = self.backbone_net(data_dict)
-        # xyz = data_dict["fp2_xyz"]
-        # features = data_dict["fp2_features"]
-        # data_dict["seed_inds"] = data_dict["fp2_inds"]
-        # data_dict["seed_xyz"] = xyz
-        # data_dict["seed_features"] = features
-        # xyz, features = self.vgen(xyz, features)
-        # features_norm = torch.norm(features, p=2, dim=1)
-        # features = features.div(features_norm.unsqueeze(1))
-        # data_dict["vote_xyz"] = xyz
-        # data_dict["vote_features"] = features
-        # # proposal generation
-        # data_dict = self.pnet(xyz, features, data_dict)
-        data_dict = self.group_free(data_dict)
+        if self.args.pretrain_model_on:
+            if self.args.pretrain_model == "votenet":
+                data_dict = self.backbone_net(data_dict)
+                xyz = data_dict["fp2_xyz"]
+                features = data_dict["fp2_features"]
+                data_dict["seed_inds"] = data_dict["fp2_inds"]
+                data_dict["seed_xyz"] = xyz
+                data_dict["seed_features"] = features
+                xyz, features = self.vgen(xyz, features)
+                features_norm = torch.norm(features, p=2, dim=1)
+                features = features.div(features_norm.unsqueeze(1))
+                data_dict["vote_xyz"] = xyz
+                data_dict["vote_features"] = features
+                # proposal generation
+                data_dict = self.pnet(xyz, features, data_dict)
+            if self.args.pretrain_model == "groupfree":
+                data_dict = self.group_free(data_dict)
+            # return data_dict
+
         # text encode
         data_dict = self.lang(data_dict)
 
@@ -149,7 +159,8 @@ class JointNet(nn.Module):
         bbox_feature = data_dict["bbox_feature"]  # bs, num_proposal, hidden_dim
         sem_cls_scores = data_dict["sem_cls_scores"]  # bs, num_proposal, 18
         # pred_lang_cat = torch.argmax(data_dict["lang_scores"], 1)  # bs*len_num_max
-        pred_lang_cat = self.lang.eval_lang_cls(data_dict)
+        lang_score = self.lang.eval_lang_cls(data_dict)
+        pred_lang_cat = torch.argmax(lang_score, 1)
         object_cat = data_dict["object_cat_list"].flatten(0, 1)
         data_dict["lang_acc"] = (pred_lang_cat == object_cat).float().mean()
         bs, num_proposal, hidden_dim = bbox_feature.shape
@@ -203,7 +214,7 @@ class JointNet(nn.Module):
         masks_list = masks_list.masked_fill(data_dict["all_masks_list"][:, :, :max_des_len] == 2, 2)
         data_dict["rand_masks_list"] = masks_list
         # masks_list = masks_list[:, :, :max_des_len]
-        xyz = data_dict['center'].unsqueeze(1).expand(-1, len_num_max, -1, -1).flatten(0, 1)  # bs * len_num_max, num_proposal, 3
+        xyz = data_dict['pred_center'].unsqueeze(1).expand(-1, len_num_max, -1, -1).flatten(0, 1)  # bs * len_num_max, num_proposal, 3
         target_ids = target_ids.flatten(0, 1)  # bs*len_num_max, num_target
         other_ids = other_ids.flatten(0, 1)
         target_xyzs = torch.gather(xyz, dim=1, index=target_ids.unsqueeze(-1).expand(-1, -1, 3))  # bs*len_num_max, num_target, 3

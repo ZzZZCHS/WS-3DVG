@@ -7,7 +7,7 @@ import sys
 
 
 class ContraModule(nn.Module):
-    def __init__(self, hidden_size=128, max_des_len=100, head=1):
+    def __init__(self, hidden_size=128, max_des_len=100, head=8):
         super().__init__()
         self.hidden_size = hidden_size
         self.dropout = 0.1
@@ -23,8 +23,8 @@ class ContraModule(nn.Module):
         len_num_max = lang_feat.shape[0] // bs
         lang_feat = lang_feat.reshape(bs, len_num_max, max_des_len, dim)
         mask = data_dict["all_masks_list"][:, :, :max_des_len].unsqueeze(-1)
-        lang_feat = lang_feat.masked_fill(mask == 2, 0.)
-        lang_feat = lang_feat.sum(dim=2) / (mask != 2).sum(dim=2)
+        lang_feat = lang_feat.masked_fill(mask == 2, -float("inf"))
+        lang_feat = lang_feat.max(dim=2)[0]
         data_dict["ori_lang_feat"] = lang_feat
         # objectness_preds_batch = torch.argmax(data_dict['objectness_scores'], 2).long()
         # attention_mask = (objectness_preds_batch == 0).unsqueeze(1).unsqueeze(1)  # bs, 1, 1, num_proposal

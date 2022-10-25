@@ -18,7 +18,7 @@ from itertools import chain
 from collections import Counter
 from torch.utils.data import Dataset
 
-from lib.configs.config_joint import CONF
+from lib.configs.config import CONF
 from utils.pc_utils import random_sampling, rotx, roty, rotz
 from utils.box_util import get_3d_box, get_3d_box_batch
 from data.scannet.model_util_scannet import rotate_aligned_boxes, ScannetDatasetConfig, rotate_aligned_boxes_along_axis
@@ -419,6 +419,10 @@ class ReferenceDataset(Dataset):
         self.lang, self.lang_ids, self.lang_main = self._tranform_des()
         self.ground_lang, self.ground_lang_ids, self.ground_lang_main, self.masks = self._ground_tranform_des()
         self._build_frequency(dataset_name)
+
+        if not CONF.pretrain_model_on:
+            pretrained_path = CONF.PATH.PRETRAINED_TRAIN_DATA if self.split == "train" else CONF.PATH.PRETRAINED_VAL_DATA
+            self.pretrained_data = torch.load(pretrained_path)
 
         # add scannet data
         self.scene_list = sorted(list(set([data["scene_id"] for data in self.scanrefer])))
@@ -933,6 +937,13 @@ class ScannetReferenceDataset(ReferenceDataset):
         data_dict["object_id_list"] = np.array(object_id_list).astype(np.int64)
         data_dict["ann_id_list"] = np.array(ann_id_list).astype(np.int64)
         data_dict["object_cat_list"] = np.array(object_cat_list).astype(np.int64)
+
+        # data_dict["idx"] = idx
+        # data_dict["scene_id"] = scene_id
+
+        if not CONF.pretrain_model_on:
+            for key in CONF.PRETRAINED_LIST:
+                data_dict[key] = np.array(self.pretrained_data[scene_id][key]).astype(np.float32)
 
         unique_multiple_list = []
         for i in range(self.lang_num_max):
