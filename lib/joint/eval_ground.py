@@ -60,10 +60,7 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
         data_dict: dict
     """
 
-    #batch_size, num_words, _ = data_dict["lang_feat"].shape
-
-    # objectness_preds_batch = torch.argmax(data_dict['objectness_scores'], 2).long()
-    objectness_preds_batch = torch.round(data_dict["objectness_scores"].sigmoid()).squeeze(-1).long()
+    objectness_preds_batch = data_dict["objectness_pred"]
     # objectness_labels_batch = data_dict['objectness_label'].long()
     sem_cls_pred = data_dict['sem_cls_scores'].argmax(-1)  # (B,K)
     num_proposal = sem_cls_pred.shape[1]
@@ -117,13 +114,22 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
     pred_ref = torch.argmax(masked_pred, 1)  # (B,)
     pred_ref_top5 = torch.topk(masked_pred, k=5, dim=1)[1]
 
+    # pred_ref = torch.empty(batch_size).long()
+    # object_feat = data_dict["bbox_feature"]  # bs, N, dim
+    # lang_feat = data_dict["lang_emb"]  # bs, dim
+    # for i in range(batch_size):
+    #     x = torch.matmul(lang_feat[i], object_feat[i].t())
+    #     pred_ref[i] = torch.argmax(x, 0)
+    #     # print(pred_ref[i])
+
+
     pred_heading = data_dict['pred_heading'].detach().cpu().numpy() # B,num_proposal
     pred_center = data_dict['pred_center'].detach().cpu().numpy() # (B, num_proposal)
     pred_box_size = data_dict['pred_size'].detach().cpu().numpy() # (B, num_proposal, 3)
 
 
     # store
-    data_dict["pred_mask"] = pred_masks
+    # data_dict["pred_mask"] = pred_masks
     # data_dict["label_mask"] = label_masks
 
     #print("ref_box_label", data_dict["ref_box_label"].shape, data_dict["ref_box_label_list"].shape)
@@ -358,6 +364,9 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
     data_dict["top5_iou_0.1"] = np.array(top5_ious)[np.array(top5_ious) >= 0.1].shape[0] / np.array(top5_ious).shape[0]
     data_dict["top5_iou_0.25"] = np.array(top5_ious)[np.array(top5_ious) >= 0.25].shape[0] / np.array(top5_ious).shape[0]
     data_dict["top5_iou_0.5"] = np.array(top5_ious)[np.array(top5_ious) >= 0.5].shape[0] / np.array(top5_ious).shape[0]
+    # data_dict["top5_iou_0.1"] = 0.
+    # data_dict["top5_iou_0.25"] = 0.
+    # data_dict["top5_iou_0.5"] = 0.
 
     if not is_eval:
         data_dict["rec_iou_0.1"] = np.array(rec_ious)[np.array(rec_ious) >= 0.1].shape[0] / np.array(rec_ious).shape[0]

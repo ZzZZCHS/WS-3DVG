@@ -147,6 +147,11 @@ def get_model(args, dataset):
             pretrained_groupfree_weights = torch.load(CONF.PATH.GROUPFREE_PRETRAIN)
             # print(pretrained_groupfree_weights.keys())
             model.group_free.load_state_dict(pretrained_groupfree_weights, strict=False)
+        if args.pretrain_model == "votenet":
+            print("loading pretrained VoteNet...")
+            pretrained_votenet_weights = torch.load(CONF.PATH.VOTENET_PRETRAIN)
+            # print(pretrained_votenet_weights["model_state_dict"].keys())
+            model.load_state_dict(pretrained_votenet_weights["model_state_dict"], strict=False)
 
     # print("loading pretrained LangModule weights...")
     # pretrained_lang_weights = torch.load(CONF.PATH.LANGMODULE_PRETRAIN)

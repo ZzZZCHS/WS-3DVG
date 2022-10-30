@@ -137,8 +137,9 @@ class ProposalModule(nn.Module):
         num_proposal = net_transposed.shape[1]
 
         objectness_scores = net_transposed[:, :, 0:2]
+        objectness_pred = torch.argmax(objectness_scores, 2).long()
 
-        base_xyz = data_dict['aggregated_vote_xyz']  # (batch_size, num_proposal, 3)
+        base_xyz = data_dict['query_points_xyz']  # (batch_size, num_proposal, 3)
         center = base_xyz + net_transposed[:, :, 2:5]  # (batch_size, num_proposal, 3)
 
         heading_scores = net_transposed[:, :, 5:5 + num_heading_bin]
@@ -155,6 +156,7 @@ class ProposalModule(nn.Module):
 
         # store
         data_dict['objectness_scores'] = objectness_scores
+        data_dict['objectness_pred'] = objectness_pred
         data_dict['center'] = center
         data_dict['heading_scores'] = heading_scores  # Bxnum_proposalxnum_heading_bin
         data_dict[

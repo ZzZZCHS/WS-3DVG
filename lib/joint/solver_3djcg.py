@@ -30,7 +30,7 @@ ITER_REPORT_TEMPLATE = """
 [loss] train_grounding_loss: {train_grounding_loss}
 [loss] train_weak_loss: {train_weak_loss}
 [loss] train_rec_loss: {train_rec_loss}
-[loss] train_contra_loss: {train_contra_loss}
+[loss] train_nce_loss: {train_nce_loss}
 [loss] train_lang_acc: {train_lang_acc}
 [sco.] train_obj_acc: {train_obj_acc}
 [sco.] train_sem_acc: {train_sem_acc}
@@ -57,7 +57,7 @@ EPOCH_REPORT_TEMPLATE = """
 [train] train_grounding_loss: {train_grounding_loss}
 [train] train_weak_loss: {train_weak_loss}
 [train] train_rec_loss: {train_rec_loss}
-[train] train_contra_loss: {train_contra_loss}
+[train] train_nce_loss: {train_nce_loss}
 [train] train_lang_acc: {train_lang_acc}
 [train] train_obj_acc: {train_obj_acc}
 [train] train_sem_acc: {train_sem_acc}
@@ -313,7 +313,7 @@ class Solver():
     def _dump_log(self, phase, is_eval=False):
         if phase == "train" and not is_eval:
             log = {
-                "loss": ["loss", "lang_loss", "weak_loss", "rec_loss", "contra_loss", "grounding_loss"],
+                "loss": ["loss", "lang_loss", "weak_loss", "rec_loss", "nce_loss", "grounding_loss"],
                 "score": ["lang_acc", "obj_acc", "sem_acc", "pos_ratio", "neg_ratio",
                           "iou_0.1", "iou_0.25", "iou_0.5", "rec_iou_0.1", "rec_iou_0.25", "rec_iou_0.5",
                           "rand_iou_0.1", "rand_iou_0.25", "rand_iou_0.5", "upper_iou_0.1", "upper_iou_0.25", "upper_iou_0.5",
@@ -387,7 +387,7 @@ class Solver():
             self._running_log["grounding_loss"] = data_dict["grounding_loss"]
             self._running_log["weak_loss"] = data_dict["weak_loss"]
             self._running_log["rec_loss"] = data_dict["rec_loss"]
-            self._running_log["contra_loss"] = data_dict["contra_loss"]
+            self._running_log["nce_loss"] = data_dict["nce_loss"]
             self._running_log["loss"] = data_dict["loss"] / self.opt_steps
 
 
@@ -577,7 +577,7 @@ class Solver():
                     self.log[phase]["grounding_loss"].append(self._running_log["grounding_loss"].item())
                     self.log[phase]["weak_loss"].append(self._running_log["weak_loss"].item())
                     self.log[phase]["rec_loss"].append(self._running_log["rec_loss"].item())
-                    self.log[phase]["contra_loss"].append(self._running_log["contra_loss"].item())
+                    self.log[phase]["nce_loss"].append(self._running_log["nce_loss"].item())
                     self.log[phase]["sem_acc"].append(self._running_log["sem_acc"])
                     self.log[phase]["lang_acc"].append(self._running_log["lang_acc"])
                     self.log[phase]["obj_acc"].append(self._running_log["obj_acc"])
@@ -776,7 +776,7 @@ class Solver():
             train_grounding_loss=round(np.mean([v for v in self.log["train"]["grounding_loss"]]), 5),
             train_weak_loss=round(np.mean([v for v in self.log["train"]["weak_loss"]]), 5),
             train_rec_loss=round(np.mean([v for v in self.log["train"]["rec_loss"]]), 5),
-            train_contra_loss=round(np.mean([v for v in self.log["train"]["contra_loss"]]), 5),
+            train_nce_loss=round(np.mean([v for v in self.log["train"]["nce_loss"]]), 5),
             train_lang_acc=round(np.mean([v for v in self.log["train"]["lang_acc"]]), 5),
             train_obj_acc=round(np.mean([v for v in self.log["train"]["obj_acc"]]), 5),
             train_sem_acc=round(np.mean([v for v in self.log["train"]["sem_acc"]]), 5),
@@ -828,7 +828,7 @@ class Solver():
             train_grounding_loss=round(np.mean([v for v in self.log["train"]["grounding_loss"]]), 5),
             train_weak_loss=round(np.mean([v for v in self.log["train"]["weak_loss"]]), 5),
             train_rec_loss=round(np.mean([v for v in self.log["train"]["rec_loss"]]), 5),
-            train_contra_loss=round(np.mean([v for v in self.log["train"]["contra_loss"]]), 5),
+            train_nce_loss=round(np.mean([v for v in self.log["train"]["nce_loss"]]), 5),
             train_lang_acc=round(np.mean([v for v in self.log["train"]["lang_acc"]]), 5),
             train_obj_acc=round(np.mean([v for v in self.log["train"]["obj_acc"]]), 5),
             train_sem_acc=round(np.mean([v for v in self.log["train"]["sem_acc"]]), 5),

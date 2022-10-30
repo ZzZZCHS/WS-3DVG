@@ -89,7 +89,7 @@ for i, data in enumerate(NR3D_DATA):
     print(i)
     print(data[-2:])
 
-with open(os.path.join(PATH_DATA, "nr3d/masked_nr3d.csv")) as f:
+with open(os.path.join(PATH_DATA, "nr3d/masked_nr3d.csv"), "w") as f:
     csvwriter = csv.writer(f)
     csvwriter.writerow(NR3D_IDS)
     csvwriter.writerows(NR3D_DATA)

@@ -24,16 +24,16 @@ class RelationModule(nn.Module):
             nn.Conv1d(hidden_size, hidden_size, 1),
         )
 
-        self.self_attn_fc = nn.ModuleList(
-            nn.Sequential(  # 4 128 256 4(head)
-            nn.Linear(4, 32),  # xyz, dist
-            nn.ReLU(),
-            nn.LayerNorm(32),
-            nn.Linear(32, 32),
-            nn.ReLU(),
-            nn.LayerNorm(32),
-            nn.Linear(32, 4)
-        ) for i in range(depth))
+        # self.self_attn_fc = nn.ModuleList(
+        #     nn.Sequential(  # 4 128 256 4(head)
+        #     nn.Linear(4, 32),  # xyz, dist
+        #     nn.ReLU(),
+        #     nn.LayerNorm(32),
+        #     nn.Linear(32, 32),
+        #     nn.ReLU(),
+        #     nn.LayerNorm(32),
+        #     nn.Linear(32, 4)
+        # ) for i in range(depth))
         self.self_attn = nn.ModuleList(
             MultiHeadAttention(d_model=hidden_size, d_k=hidden_size // head, d_v=hidden_size // head, h=head) for i in range(depth))
 
@@ -67,33 +67,33 @@ class RelationModule(nn.Module):
         # features = self.mhatt(features, features, features, proposal_masks)
         for i in range(self.depth):
             # relation emb
-            if self.use_dist_weight_matrix:
-                # Attention Weight
-                # objects_center = data_dict['center']
-                objects_center = data_dict['pred_bbox_corner'].mean(dim=-2)
-                N_K = objects_center.shape[1]
-                center_A = objects_center[:, None, :, :].repeat(1, N_K, 1, 1)
-                center_B = objects_center[:, :, None, :].repeat(1, 1, N_K, 1)
-                center_dist = (center_A - center_B)
-                dist = center_dist.pow(2)
-                # print(dist.shape, '<< dist shape', flush=True)
-                dist = torch.sqrt(torch.sum(dist, dim=-1))[:, None, :, :]
-                #dist_weights = 1 / (dist + 1e-2)
-                #norm = torch.sum(dist_weights, dim=2, keepdim=True)
-                #dist_weights = dist_weights / norm
-
-                #zeros = torch.zeros_like(dist_weights)
-                # dist_weights = torch.cat([dist_weights, -dist, zeros, zeros], dim=1).detach()
-                # dist_weights = torch.cat([-dist, -dist, -dist, dist_weights, dist_weights, zeros, zeros, zeros], dim=1).detach()
-                # dist_weights = torch.cat([-dist, -dist, -dist, zeros], dim=1).detach()
-
-                weights = torch.cat([center_dist, dist.permute(0, 2, 3, 1)], dim=-1).detach()  # K N N 4
-                dist_weights = self.self_attn_fc[i](weights).permute(0, 3, 1, 2)
-
-                attention_matrix_way = 'add'
-            else:
-                dist_weights = None
-                attention_matrix_way = 'mul'
+            # if self.use_dist_weight_matrix:
+            #     # Attention Weight
+            #     # objects_center = data_dict['center']
+            #     objects_center = data_dict['pred_bbox_corner'].mean(dim=-2)
+            #     N_K = objects_center.shape[1]
+            #     center_A = objects_center[:, None, :, :].repeat(1, N_K, 1, 1)
+            #     center_B = objects_center[:, :, None, :].repeat(1, 1, N_K, 1)
+            #     center_dist = (center_A - center_B)
+            #     dist = center_dist.pow(2)
+            #     # print(dist.shape, '<< dist shape', flush=True)
+            #     dist = torch.sqrt(torch.sum(dist, dim=-1))[:, None, :, :]
+            #     #dist_weights = 1 / (dist + 1e-2)
+            #     #norm = torch.sum(dist_weights, dim=2, keepdim=True)
+            #     #dist_weights = dist_weights / norm
+            #
+            #     #zeros = torch.zeros_like(dist_weights)
+            #     # dist_weights = torch.cat([dist_weights, -dist, zeros, zeros], dim=1).detach()
+            #     # dist_weights = torch.cat([-dist, -dist, -dist, dist_weights, dist_weights, zeros, zeros, zeros], dim=1).detach()
+            #     # dist_weights = torch.cat([-dist, -dist, -dist, zeros], dim=1).detach()
+            #
+            #     weights = torch.cat([center_dist, dist.permute(0, 2, 3, 1)], dim=-1).detach()  # K N N 4
+            #     dist_weights = self.self_attn_fc[i](weights).permute(0, 3, 1, 2)
+            #
+            #     attention_matrix_way = 'add'
+            # else:
+            dist_weights = None
+            attention_matrix_way = 'mul'
 
             # multiview/rgb feature embedding
             if self.use_obj_embedding:
@@ -133,7 +133,7 @@ class RelationModule(nn.Module):
         features = self.dropout(features) + data_dict["pred_bbox_feature"]
         # data_dict['dist_weights'] = dist_weights
         # data_dict['attention_matrix_way'] = attention_matrix_way
-        data_dict["bbox_feature"] = features
+        data_dict["bbox_feature"] = self.layer_norm(features)
         return data_dict
 
 

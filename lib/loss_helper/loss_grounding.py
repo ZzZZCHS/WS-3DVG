@@ -65,7 +65,7 @@ def compute_reference_loss(data_dict, config, no_reference=False):
     gt_labels = np.zeros((batch_size, len_nun_max, num_proposals))
     for i in range(batch_size):
         # objectness_masks = data_dict['objectness_scores'].max(2)[1].float().cpu().numpy() # batch_size, num_proposals
-        objectness_masks = torch.round(data_dict["objectness_scores"].sigmoid()).squeeze(-1).cpu().numpy()
+        objectness_masks = data_dict["objectness_pred"].cpu().numpy()
         gt_obb_batch = config.param2obb_batch(gt_center_list[i][:, 0:3], gt_heading_class_list[i],
                                               gt_heading_residual_list[i],
                                               gt_size_class_list[i], gt_size_residual_list[i])

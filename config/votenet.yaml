@@ -1,0 +1,4 @@
+MODEL:
+  hidden_size: 128
+  num_points: 40000
+  no_height: False

@@ -176,6 +176,7 @@ class PredictHead(nn.Module):
             end_points["pred_bbox_feature"] = features.permute(0, 2, 1)
             end_points["base_xyz"] = base_xyz
             end_points["objectness_scores"] = objectness_scores
+            end_points["objectness_pred"] = torch.round(objectness_scores.sigmoid()).squeeze(-1).long()
             end_points["center"] = center
             end_points["heading_scores"] = heading_scores
             end_points["heading_residuals_normalized"] = heading_residuals_normalized
@@ -291,6 +292,7 @@ class ClsAgnosticPredictHead(nn.Module):
             end_points["pred_bbox_feature"] = features.permute(0, 2, 1)
             end_points["base_xyz"] = base_xyz
             end_points["objectness_scores"] = objectness_scores
+            end_points["objectness_pred"] = torch.round(objectness_scores.sigmoid()).squeeze(-1).long()
             end_points["center"] = center
             end_points["heading_scores"] = heading_scores
             end_points["heading_residuals_normalized"] = heading_residuals_normalized

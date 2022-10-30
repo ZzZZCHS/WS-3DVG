@@ -10,7 +10,7 @@ ROOT_DIR = os.path.dirname(os.path.dirname(BASE_DIR))
 class Config():
     def __init__(self):
         self.parser = argparse.ArgumentParser()
-        self.parser.add_argument("--config", type=str, default=None, help="path to config file")
+        self.parser.add_argument("--config", type=str, default="config/groupfree.yaml", help="path to config file")
         self.parser.add_argument("--tag", type=str, help="tag for the training, e.g. cuda_wl", default="")
         self.parser.add_argument("--dataset", type=str, help="Choose a dataset: ScanRefer or ReferIt3D", default="ScanRefer")
         self.parser.add_argument("--gpu", type=str, help="gpu", default="0")
@@ -19,7 +19,7 @@ class Config():
         self.parser.add_argument("--local_rank", type=int, help="local ran for DistributedDataParallel")
         self.parser.add_argument("--opt_steps", type=int, default=1, help="optimizer steps")
 
-        self.parser.add_argument("--batch_size", type=int, help="batch size", default=2)
+        self.parser.add_argument("--batch_size", type=int, help="batch size", default=15)
         self.parser.add_argument("--val_batch_size", type=int, help="val batch size", default=1)
         self.parser.add_argument("--epoch", type=int, help="number of epochs", default=20)
         self.parser.add_argument("--verbose", type=int, help="iterations of showing verbose", default=50)
@@ -28,16 +28,20 @@ class Config():
         self.parser.add_argument("--wd", type=float, help="weight decay", default=5e-4)
         self.parser.add_argument("--amsgrad", action='store_true', help="optimizer with amsgrad")
 
-        self.parser.add_argument("--hidden_size", type=int, help="hidden size", default=288)
+        # self.parser.add_argument("--hidden_size", type=int, help="hidden size", default=288)
         self.parser.add_argument("--lang_num_max", type=int, help="lang num max", default=8)
-        self.parser.add_argument("--num_points", type=int, default=50000, help="Point Number [default: 40000]")
+        # self.parser.add_argument("--num_points", type=int, default=50000, help="Point Number [default: 40000]")
         self.parser.add_argument("--num_proposals", type=int, default=256, help="Proposal number [default: 256]")
-        self.parser.add_argument("--num_target", type=int, default=16, help="Target proposal number [default: 8]")
+        self.parser.add_argument("--num_target", type=int, default=8, help="Target proposal number [default: 8]")
         self.parser.add_argument("--num_locals", type=int, default=20, help="Number of local objects [default: -1]")
         self.parser.add_argument("--num_scenes", type=int, default=-1, help="Number of scenes [default: -1]")
         self.parser.add_argument("--num_graph_steps", type=int, default=0, help="Number of graph conv layer [default: 0]")
         self.parser.add_argument("--num_ground_epoch", type=int, default=100, help="Number of ground epoch [default: 50]")
         self.parser.add_argument("--width", type=int, default=1, help="backbone width")
+
+        self.parser.add_argument("--no_mil", action="store_true", help="no multi-instance learning")
+        self.parser.add_argument("--no_recon", action="store_true", help="no reconstruct module")
+        self.parser.add_argument("--no_text", action="store_true", help="no object-query class similarity")
 
         self.parser.add_argument("--criterion", type=str, default="sum", \
                             help="criterion for selecting the best model [choices: bleu-1, bleu-2, bleu-3, bleu-4, cider, rouge, meteor, sum]")
@@ -50,7 +54,7 @@ class Config():
                             help="Mode for aggregating features, [choices: add, mean, max]")
 
         self.parser.add_argument("--coslr", action='store_true', help="cosine learning rate")
-        self.parser.add_argument("--no_height", action="store_true", default=True, help="Do NOT use height signal in input.")
+        # self.parser.add_argument("--no_height", action="store_true", default=True, help="Do NOT use height signal in input.")
         self.parser.add_argument("--no_augment", action="store_true", default=True,
                             help="Do NOT use height signal in input.")
         self.parser.add_argument("--no_detection", action="store_true", default=True,

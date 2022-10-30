@@ -17,6 +17,7 @@ from models.recnet.contra_module import ContraModule
 from models.groupfree import GroupFreeDetector
 
 from lib.ap_helper.ap_helper_fcos import parse_predictions
+import torch.nn.functional as F
 
 
 class JointNet(nn.Module):
@@ -83,7 +84,7 @@ class JointNet(nn.Module):
         self.lang = LangModule(dataset_config.num_class, use_lang_classifier, use_bidir, emb_size, hidden_size)
         # for _p in self.lang.parameters():
         #     _p.requires_grad = False
-        self.contranet = ContraModule(hidden_size=hidden_size)
+        # self.contranet = ContraModule(hidden_size=hidden_size)
 
         self.recnet = ReconstructModule(vocab_size=self.vocab_size, hidden_size=hidden_size)
 
@@ -139,7 +140,7 @@ class JointNet(nn.Module):
 
         data_dict = self.relation(data_dict)
 
-        data_dict = self.contranet(data_dict)
+        # data_dict = self.contranet(data_dict)
 
         self.divide_proposals(data_dict)
 
@@ -152,9 +153,9 @@ class JointNet(nn.Module):
         return data_dict
 
     def divide_proposals(self, data_dict):
-        att_weight = data_dict["contra_att_weight"]
-        len_num_max = att_weight.shape[1]
-        att_weight = att_weight.flatten(0, 1)
+        # att_weight = data_dict["contra_att_weight"]
+        # len_num_max = att_weight.shape[1]
+        # att_weight = att_weight.flatten(0, 1)
 
         bbox_feature = data_dict["bbox_feature"]  # bs, num_proposal, hidden_dim
         sem_cls_scores = data_dict["sem_cls_scores"]  # bs, num_proposal, 18
@@ -165,27 +166,33 @@ class JointNet(nn.Module):
         data_dict["lang_acc"] = (pred_lang_cat == object_cat).float().mean()
         bs, num_proposal, hidden_dim = bbox_feature.shape
         # num_class = sem_cls_scores.shape[2]
-        # len_num_max = pred_lang_cat.shape[0] // bs
+        len_num_max = pred_lang_cat.shape[0] // bs
         bbox_feature = bbox_feature.unsqueeze(1).expand(-1, len_num_max, -1, -1).flatten(0, 1)
         sem_cls_scores = sem_cls_scores.unsqueeze(1).expand(-1, len_num_max, -1, -1).flatten(0, 1)
         pred_by_target_cls = torch.gather(sem_cls_scores, 2, pred_lang_cat.unsqueeze(-1).unsqueeze(-1).expand(-1, num_proposal, -1)).squeeze(-1)  # bs*len_num_max, num_proposal
         pred_by_target_cls = torch.softmax(pred_by_target_cls, -1)
 
+        lang_score = lang_score.unsqueeze(1).expand(-1, num_proposal, -1)
+        cls_sim_score = F.cosine_similarity(sem_cls_scores, lang_score, dim=-1)
+        # print(cls_sim_score[0])
+
+        lang_feat = data_dict["lang_emb"].reshape(bs, len_num_max, hidden_dim)  # bs, len_num_max, dim
+        mil_score = torch.matmul(lang_feat, data_dict["bbox_feature"].permute(0, 2, 1))  # bs, len_num_max, num_proposal
+        mil_score = mil_score.flatten(0, 1).softmax(-1)  # bs * num, num_proposal
+        weights = torch.zeros_like(pred_by_target_cls)
+        if not self.args.no_mil:
+            weights += 0.5 * mil_score
+        if not self.args.no_text:
+            weights += pred_by_target_cls + cls_sim_score
+        # weights = pred_by_target_cls  # + cls_sim_score + 0.5 * mil_score
+
         # objectness_preds_batch = torch.argmax(data_dict['objectness_scores'], 2).long()
-        objectness_preds_batch = torch.round(data_dict["objectness_scores"].sigmoid()).squeeze(-1).long()
+        objectness_preds_batch = data_dict["objectness_pred"]
         non_objectness_masks = (objectness_preds_batch == 0).bool()  # bs, num_proposal
         non_objectness_masks = non_objectness_masks.unsqueeze(1).expand(-1, len_num_max, -1).flatten(0, 1)
-        # weights = pred_by_target_cls + att_weight
-        weights = pred_by_target_cls
         weights.masked_fill_(non_objectness_masks, -float('inf'))
         # pred_by_target_cls.masked_fill_(non_objectness_masks, -float('inf'))
         # att_weight.masked_fill_(non_objectness_masks, 0.)
-
-        # sorted_ids = torch.sort(pred_by_target_cls, descending=True, dim=1)[1]
-        # target_ids = sorted_ids[:, :self.num_target]
-        # other_ids = sorted_ids[:, self.num_target:]
-        # target_feat = torch.gather(bbox_feature, 1, target_ids.unsqueeze(-1).expand(-1, -1, hidden_dim))  # bs*len_num_max, num_target, hiddem_dim
-        # other_feat = torch.gather(bbox_feature, 1, other_ids.unsqueeze(-1).expand(-1, -1, hidden_dim))
 
         sorted_ids = torch.sort(weights, descending=True, dim=1)[1]
         target_ids = sorted_ids[:, :self.num_target]
@@ -225,14 +232,15 @@ class JointNet(nn.Module):
         word_logits = torch.zeros(bs, len_num_max, self.num_target, max_des_len, self.vocab_size).to(device)
         # rec_word_feat = torch.zeros(bs, len_num_max, self.num_target, max_des_len, 128).to(device)
         for i in range(self.num_target):
-            center_xyz = target_xyzs[:, i:i+1, :]  # bs*len_num_max, 1, 3
-            dist = n_distance(center_xyz, other_xyzs)  # bs*len_num_max, num_other
-            # dist = n_distance(center_xyz, xyz)  # bs*len_num_max, num_proposal
-            # dist = dist.masked_fill(nms_masks == 0, 0.) + 10. * dist.masked_fill(nms_masks == 1, 0)
-            # dist = torch.gather(dist, dim=1, index=other_ids)
-            min_dist_ids = torch.topk(dist, self.num_rec_other, largest=False)[1]  # bs*len_num_max, num_rec_other
-            min_other_feat = torch.gather(other_feat, 1, min_dist_ids.unsqueeze(-1).expand(-1, -1, hidden_dim)).reshape(bs, len_num_max, self.num_rec_other, hidden_dim)
-            object_feat = torch.cat((target_feat[:, :, i:i + 1, :], min_other_feat), dim=2)
+            # center_xyz = target_xyzs[:, i:i+1, :]  # bs*len_num_max, 1, 3
+            # dist = n_distance(center_xyz, other_xyzs)  # bs*len_num_max, num_other
+            # # dist = n_distance(center_xyz, xyz)  # bs*len_num_max, num_proposal
+            # # dist = dist.masked_fill(nms_masks == 0, 0.) + 10. * dist.masked_fill(nms_masks == 1, 0)
+            # # dist = torch.gather(dist, dim=1, index=other_ids)
+            # min_dist_ids = torch.topk(dist, self.num_rec_other, largest=False)[1]  # bs*len_num_max, num_rec_other
+            # min_other_feat = torch.gather(other_feat, 1, min_dist_ids.unsqueeze(-1).expand(-1, -1, hidden_dim)).reshape(bs, len_num_max, self.num_rec_other, hidden_dim)
+            # object_feat = torch.cat((target_feat[:, :, i:i + 1, :], min_other_feat), dim=2)
+            object_feat = target_feat[:, :, i:i + 1, :]
             word_logit = self.recnet(words_feat, object_feat, masks_list)  # bs, len_num_max, max_des_len, vocab_size
             word_logits[:, :, i, :, :] = word_logit
             # rec_word_feat[:, :, i, :, :] = self.recnet(words_feat, object_feat, masks_list)
@@ -256,7 +264,7 @@ class JointNet(nn.Module):
         nms_masks = torch.LongTensor(data_dict["pred_mask"]).cuda()
         # print("nms_mask", nms_masks.float().sum(-1).mean())
         # obj_masks = torch.argmax(data_dict["objectness_scores"], 2).long()
-        obj_masks = torch.round(data_dict["objectness_scores"].sigmoid()).squeeze(-1).long()
+        obj_masks = data_dict["objectness_pred"]
         # print("obj_mask", obj_masks.float().sum(-1).mean())
         nms_masks = nms_masks * obj_masks
         # print("all_mask", nms_masks.float().sum(-1).mean())

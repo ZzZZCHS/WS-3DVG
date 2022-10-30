@@ -16,14 +16,15 @@ class ContraModule(nn.Module):
         self.cross_attention = MultiHeadAttention(d_model=hidden_size, d_k=hidden_size // head, d_v=hidden_size // head, h=head)
 
     def forward(self, data_dict):
-        lang_feat = data_dict["lang_fea"]  # bs*len_num_max, max_des_len, dim
+        lang_feat = data_dict["lang_fea"]  # bs*len_num_max, dim
         object_feat = data_dict["bbox_feature"]  # bs, num_proposal, dim
         max_des_len = lang_feat.shape[1]
         bs, num_proposal, dim = object_feat.shape
         len_num_max = lang_feat.shape[0] // bs
+        # lang_feat = lang_feat.reshape(bs, len_num_max, dim)
         lang_feat = lang_feat.reshape(bs, len_num_max, max_des_len, dim)
-        mask = data_dict["all_masks_list"][:, :, :max_des_len].unsqueeze(-1)
-        lang_feat = lang_feat.masked_fill(mask == 2, -float("inf"))
+        # mask = data_dict["all_masks_list"][:, :, :max_des_len].unsqueeze(-1)
+        # lang_feat = lang_feat.masked_fill(mask == 2, -float("inf"))
         lang_feat = lang_feat.max(dim=2)[0]
         data_dict["ori_lang_feat"] = lang_feat
         # objectness_preds_batch = torch.argmax(data_dict['objectness_scores'], 2).long()

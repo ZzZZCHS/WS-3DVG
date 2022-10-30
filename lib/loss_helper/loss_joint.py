@@ -15,6 +15,7 @@ from .loss_captioning import compute_cap_loss
 from .loss_grounding import compute_reference_loss, compute_lang_classification_loss
 from .loss_reconstruct import reconstruct_loss, weakly_supervised_loss, reconstruct_score
 from .loss_contra import contra_loss
+from .mil_nce import MILNCELoss
 
 FAR_THRESHOLD = 0.3
 NEAR_THRESHOLD = 0.3
@@ -34,9 +35,6 @@ def get_joint_loss(data_dict, config, is_eval=False):
         data_dict: dict
     """
 
-    # Vote loss
-    # vote_loss = compute_vote_loss(data_dict)
-
     # Obj loss
     objectness_loss, objectness_label, objectness_mask, object_assignment = compute_objectness_loss(data_dict)
     num_proposal = objectness_label.shape[1]
@@ -47,13 +45,13 @@ def get_joint_loss(data_dict, config, is_eval=False):
     data_dict["pos_ratio"] = torch.sum(objectness_label.float())/float(total_num_proposal)
     data_dict["neg_ratio"] = torch.sum(objectness_mask.float())/float(total_num_proposal) - data_dict["pos_ratio"]
 
+    lang_num = data_dict["lang_num"]
+    bs, len_num_max = data_dict["ground_lang_feat_list"].shape[:2]
+    len_num_mask = torch.ones(bs, len_num_max).to(data_dict["all_masks_list"].device)
+    for i in range(bs):
+        len_num_mask[i][lang_num[i]:].fill_(0.)
 
     if not is_eval:
-        lang_num = data_dict["lang_num"]
-        bs, len_num_max = data_dict["rec_word_logits"].shape[:2]
-        len_num_mask = torch.ones(bs, len_num_max).to(data_dict["all_masks_list"].device)
-        for i in range(bs):
-            len_num_mask[i][lang_num[i]:].fill_(0.)
         rec_word_logits = data_dict["rec_word_logits"]
         gt_idx = data_dict["ground_lang_ids_list"]
         # rec_word_feat = data_dict["rec_word_feat"]
@@ -76,41 +74,41 @@ def get_joint_loss(data_dict, config, is_eval=False):
             rec_score[:, i] = reconstruct_score(rec_word_logits_i, gt_idx, masks_list, len_num_mask)
             # rec_score[:, i] = reconstruct_score(rec_word_feat_i, ori_feat, masks_list)
         data_dict["rec_score"] = rec_score
-        weak_loss = weakly_supervised_loss(rec_score, all_scores, data_dict, len_num_mask)
+        weak_loss = weakly_supervised_loss(rec_score, all_scores, data_dict, len_num_mask, CONF)
         rec_loss = reconstruct_loss(rec_score, data_dict["epoch"], len_num_mask)
         data_dict["rec_loss"] = rec_loss
         data_dict["weak_loss"] = weak_loss
 
     data_dict, _, _, cluster_labels = compute_reference_loss(data_dict, config, no_reference=True)
-    # lang_count = data_dict['ref_center_label_list'].shape[1]
-    # data_dict["cluster_labels"] = objectness_label.new_zeros(objectness_label.shape).cuda().repeat(lang_count, 1)
     data_dict["cluster_labels"] = cluster_labels
-    # print(data_dict["cluster_ref"][0])
-    # data_dict["cluster_ref"] = objectness_label.new_zeros(objectness_label.shape).float().cuda().repeat(lang_count, 1)
-    # print(data_dict["cluster_ref"][0])
-
-    # if reference and use_lang_classifier:
-    #     data_dict["lang_loss"] = compute_lang_classification_loss(data_dict)
-    # else:
-    # data_dict["lang_loss"] = torch.zeros(1)[0].cuda()
     data_dict["lang_loss"] = compute_lang_classification_loss(data_dict)
 
-    data_dict["contra_loss"] = contra_loss(data_dict)
-    if torch.isnan(data_dict["contra_loss"]):
-        print(data_dict["contra_loss"])
+    # data_dict["contra_loss"] = contra_loss(data_dict)
+    # if torch.isnan(data_dict["contra_loss"]):
+    #     print(data_dict["contra_loss"])
+    data_dict["nce_loss"] = MILNCELoss(data_dict, len_num_mask)
 
     # Final loss function
     loss = torch.zeros(1)[0].cuda()
     if not is_eval:
-        loss += 5 * data_dict["lang_loss"] + 0 * data_dict["contra_loss"]
-        if data_dict["epoch"] >= 0:
+        if not CONF.no_mil:
+            loss += 2 * data_dict["nce_loss"]
+        if not CONF.no_text:
+            loss += 2 * data_dict["lang_loss"]
+        if not CONF.no_recon:
             loss += data_dict["rec_loss"]
-        if data_dict["epoch"] >= 1:
-            loss += data_dict["weak_loss"]
+        loss += data_dict["weak_loss"]
     # if use_lang_classifier:
     #     loss += data_dict["lang_loss"]
 
     data_dict["loss"] = loss
+
+    # data_dict["rec_loss"] = torch.zeros(1)[0].cuda()
+    # data_dict["weak_loss"] = torch.zeros(1)[0].cuda()
+    # data_dict["lang_loss"] = torch.zeros(1)[0].cuda()
+    # data_dict["contra_loss"] = torch.zeros(1)[0].cuda()
+    # data_dict["grounding_loss"] = torch.zeros(1)[0].cuda()
+    # data_dict["loss"] = MILNCELoss(data_dict)
 
     return data_dict
 

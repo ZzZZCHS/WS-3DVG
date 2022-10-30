@@ -54,18 +54,18 @@ class LangModule(nn.Module):
 
         word_embs = word_embs.reshape(batch_size * len_num_max, max_des_len, -1)
         lang_len = lang_len.reshape(batch_size * len_num_max)
-        first_obj = data_dict["ground_first_obj_list"].reshape(batch_size * len_num_max)
+        # first_obj = data_dict["ground_first_obj_list"].reshape(batch_size * len_num_max)
         #first_obj = data_dict["first_obj_list"].reshape(batch_size * len_num_max)
 
         # masking
-        if data_dict["istrain"][0] == 1 and random.random() < 0.5:
-            for i in range(word_embs.shape[0]):
-                word_embs[i, first_obj[i]] = data_dict["unk"][0]
-                len = lang_len[i]
-                for j in range(int(len/5)):
-                    num = random.randint(0, len-1)
-                    word_embs[i, num] = data_dict["unk"][0]
-        elif data_dict["istrain"][0] == 1:
+        # if data_dict["istrain"][0] == 1 and random.random() < 0.5:
+        #     for i in range(word_embs.shape[0]):
+        #         word_embs[i, first_obj[i]] = data_dict["unk"][0]
+        #         len = lang_len[i]
+        #         for j in range(int(len/5)):
+        #             num = random.randint(0, len-1)
+        #             word_embs[i, num] = data_dict["unk"][0]
+        if data_dict["istrain"][0] == 1:
             for i in range(word_embs.shape[0]):
                 len = lang_len[i]
                 for j in range(int(len/5)):
@@ -93,15 +93,16 @@ class LangModule(nn.Module):
         lang_fea = self.layer_norm(lang_fea)
         # lang_fea = self.mhatt(lang_fea, lang_fea, lang_fea, attention_mask)
 
-        data_dict["lang_fea"] = lang_fea
+        data_dict["lang_fea"] = lang_fea  # B * len_num_max, des_len, hidden_size
 
         # data_dict["lang_fea"] = cap_emb
         # print("lang_fea", lang_fea.shape)
 
-        lang_last = lang_last.permute(1, 0, 2).contiguous().flatten(start_dim=1)  # batch_size, hidden_size * num_dir
+        lang_last = lang_last.permute(1, 0, 2).contiguous().flatten(start_dim=1)  # batch_size * len_num_max, hidden_size * num_dir
         # store the encoded language features
-        data_dict["lang_emb"] = lang_last  # B, hidden_size
+        data_dict["lang_emb"] = lang_last  # B * len_num_max, hidden_size
         # print("lang_last", lang_last.shape)
+
 
         # classify
         data_dict["lang_scores"] = self.lang_cls(data_dict["lang_emb"])

@@ -88,7 +88,7 @@ def reconstruct_loss(rec_score, epoch, len_num_mask):
         return topks.sum() / (tot_len_num+1e-7) / (n_candidate // 2)
 
 
-def weakly_supervised_loss(rec_score, all_score, data_dict, len_num_mask):
+def weakly_supervised_loss(rec_score, all_score, data_dict, len_num_mask, args):
     """
         candidate_score: [bs*len_num_max, n_candidate]
         rec_score: [bs*len_num_max, n_candidate]
@@ -107,13 +107,15 @@ def weakly_supervised_loss(rec_score, all_score, data_dict, len_num_mask):
     #     rewards[n_candidate-1] = 1.
     # else:
     #     rewards = torch.linspace(0, 1, n_candidate).to(candidate_score.device)  # pseudo-label by rec_loss
-    rewards = torch.ones(n_candidate).to(candidate_score.device)
-    # rewards = torch.linspace(0.1, 1, n_candidate).to(candidate_score.device)
-    # rewards = rewards**2
+    if args.no_recon:
+        rewards = torch.ones(n_candidate).to(candidate_score.device)
+    else:
+        rewards = torch.linspace(0.1, 1, n_candidate).to(candidate_score.device)
+        rewards = rewards**2
+        idx = torch.argsort(rec_score, dim=-1, descending=True)
+        _, idx = torch.sort(idx, dim=-1)
+        rewards = rewards[idx]
 
-    idx = torch.argsort(rec_score, dim=-1, descending=True)
-    _, idx = torch.sort(idx, dim=-1)
-    rewards = rewards[idx]
     # if data_dict["epoch"] == 0:
     #     rewards = torch.linspace(1, 0, n_candidate).to(candidate_score.device)
     grounding_loss = (rewards * candidate_score).sum() / (tot_len_num+1e-7) / n_candidate

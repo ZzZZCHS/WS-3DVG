@@ -22,7 +22,7 @@ from lib.ap_helper.ap_helper_fcos import APCalculator, parse_predictions, parse_
 from lib.loss_helper.loss_joint import get_joint_loss
 from lib.joint.eval_ground import get_eval
 from models.jointnet.jointnet import JointNet
-from data.scannet.model_util_scannet import ScannetDatasetConfig
+from data.scannet.model_util_scannet import ScannetDatasetConfig, SunToScannetDatasetConfig
 
 print('Import Done', flush=True)
 SCANREFER_TRAIN = json.load(open(os.path.join(CONF.PATH.DATA, "ScanRefer_filtered_train.json")))
@@ -53,13 +53,14 @@ def get_model(args, DC, dataset):
     # load model
     input_channels = int(args.use_multiview) * 128 + int(args.use_normal) * 3 + int(args.use_color) * 3 + int(not args.no_height)
     model = JointNet(
-        num_class=DC.num_class,
+        # num_class=DC.num_class,
         vocabulary=dataset.vocabulary,
-        embeddings=dataset.glove,
-        num_heading_bin=DC.num_heading_bin,
-        num_size_cluster=DC.num_size_cluster,
-        mean_size_arr=DC.mean_size_arr,
+        # embeddings=dataset.glove,
+        # num_heading_bin=DC.num_heading_bin,
+        # num_size_cluster=DC.num_size_cluster,
+        # mean_size_arr=DC.mean_size_arr,
         input_feature_dim=input_channels,
+        width=args.width,
         num_proposal=args.num_proposals,
         no_caption=True,
         use_topdown=False,
@@ -81,7 +82,7 @@ def get_scannet_scene_list(split):
     return scene_list
 
 def get_scanrefer(args):
-    if args.detection:
+    if not args.no_detection:
         scene_list = get_scannet_scene_list("val")
         scanrefer = []
         for scene_id in scene_list:
@@ -132,7 +133,7 @@ def get_scanrefer(args):
 def eval_ref(args):
     print("evaluate localization...")
     # constant
-    DC = ScannetDatasetConfig()
+    DC = ScannetDatasetConfig() if args.pretrain_data == "scannet" else SunToScannetDatasetConfig()
 
     # init training dataset
     print("preparing data...")
@@ -475,39 +476,40 @@ def eval_det(args):
             print("eval %s: %f"%(key, metrics_dict[key]))
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", type=str, help="Choose a dataset: ScanRefer or ReferIt3D", default="ScanRefer")
-    parser.add_argument("--folder", type=str, help="Folder containing the model")
-    parser.add_argument("--gpu", type=str, help="gpu", default="0")
-    parser.add_argument("--batch_size", type=int, help="batch size", default=8)
-    parser.add_argument("--lang_num_max", type=int, help="lang num max", default=32)
-    parser.add_argument("--num_points", type=int, default=40000, help="Point Number [default: 40000]")
-    parser.add_argument("--num_proposals", type=int, default=256, help="Proposal number [default: 256]")
-    parser.add_argument("--num_scenes", type=int, default=-1, help="Number of scenes [default: -1]")
-    parser.add_argument("--force", action="store_true", help="enforce the generation of results")
-    parser.add_argument("--seed", type=int, default=42, help="random seed")
-    parser.add_argument("--repeat", type=int, default=1, help="Number of times for evaluation")
-    parser.add_argument("--no_height", action="store_true", help="Do NOT use height signal in input.")
-    parser.add_argument("--no_lang_cls", action="store_true", help="Do NOT use language classifier.")
-    parser.add_argument("--no_nms", action="store_true", help="do NOT use non-maximum suppression for post-processing.")
-    parser.add_argument("--use_color", action="store_true", help="Use RGB color in input.")
-    parser.add_argument("--use_normal", action="store_true", help="Use RGB color in input.")
-    parser.add_argument("--use_multiview", action="store_true", help="Use multiview images.")
-    parser.add_argument("--use_bidir", action="store_true", help="Use bi-directional GRU.")
-    parser.add_argument("--use_train", action="store_true", help="Use train split in evaluation.")
-    parser.add_argument("--use_oracle", action="store_true", help="Use ground truth bounding boxes.")
-    parser.add_argument("--use_cat_rand", action="store_true", help="Use randomly selected bounding boxes from correct categories as outputs.")
-    parser.add_argument("--use_best", action="store_true", help="Use best bounding boxes as outputs.")
-    parser.add_argument("--reference", action="store_true", help="evaluate the reference localization results")
-    parser.add_argument("--detection", action="store_true", help="evaluate the object detection results")
-    args = parser.parse_args()
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument("--dataset", type=str, help="Choose a dataset: ScanRefer or ReferIt3D", default="ScanRefer")
+    # parser.add_argument("--folder", type=str, help="Folder containing the model")
+    # parser.add_argument("--gpu", type=str, help="gpu", default="0")
+    # parser.add_argument("--batch_size", type=int, help="batch size", default=8)
+    # parser.add_argument("--lang_num_max", type=int, help="lang num max", default=32)
+    # parser.add_argument("--num_points", type=int, default=40000, help="Point Number [default: 40000]")
+    # parser.add_argument("--num_proposals", type=int, default=256, help="Proposal number [default: 256]")
+    # parser.add_argument("--num_scenes", type=int, default=-1, help="Number of scenes [default: -1]")
+    # parser.add_argument("--force", action="store_true", help="enforce the generation of results")
+    # parser.add_argument("--seed", type=int, default=42, help="random seed")
+    # parser.add_argument("--repeat", type=int, default=1, help="Number of times for evaluation")
+    # parser.add_argument("--no_height", action="store_true", help="Do NOT use height signal in input.")
+    # parser.add_argument("--no_lang_cls", action="store_true", help="Do NOT use language classifier.")
+    # parser.add_argument("--no_nms", action="store_true", help="do NOT use non-maximum suppression for post-processing.")
+    # parser.add_argument("--use_color", action="store_true", help="Use RGB color in input.")
+    # parser.add_argument("--use_normal", action="store_true", help="Use RGB color in input.")
+    # parser.add_argument("--use_multiview", action="store_true", help="Use multiview images.")
+    # parser.add_argument("--use_bidir", action="store_true", help="Use bi-directional GRU.")
+    # parser.add_argument("--use_train", action="store_true", help="Use train split in evaluation.")
+    # parser.add_argument("--use_oracle", action="store_true", help="Use ground truth bounding boxes.")
+    # parser.add_argument("--use_cat_rand", action="store_true", help="Use randomly selected bounding boxes from correct categories as outputs.")
+    # parser.add_argument("--use_best", action="store_true", help="Use best bounding boxes as outputs.")
+    # parser.add_argument("--reference", action="store_true", help="evaluate the reference localization results")
+    # parser.add_argument("--detection", action="store_true", help="evaluate the object detection results")
+    # args = parser.parse_args()
 
-    assert args.lang_num_max == 1, 'lang max num == 1; avoid bugs'
+    assert CONF.lang_num_max == 1, 'lang max num == 1; avoid bugs'
     # setting
     # os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
     # evaluate
-    if args.reference: eval_ref(args)
-    if args.detection: eval_det(args)
+    # if args.reference: eval_ref(args)
+    # if args.detection: eval_det(args)
+    eval_ref(CONF)
 
