@@ -34,8 +34,8 @@ from crash_on_ipy import *
 
 # extracted ScanNet object rotations from Scan2CAD 
 # NOTE some scenes are missing in this annotation!!!
-SCANREFER_TRAIN = json.load(open(os.path.join(CONF.PATH.DATA, "ScanRefer_filtered_train.json")))
-SCANREFER_VAL = json.load(open(os.path.join(CONF.PATH.DATA, "ScanRefer_filtered_val.json")))
+# SCANREFER_TRAIN = json.load(open(os.path.join(CONF.PATH.DATA, "Masked_ScanRefer_filtered_train.json")))
+# SCANREFER_VAL = json.load(open(os.path.join(CONF.PATH.DATA, "ScanRefer_filtered_val.json")))
 SCAN2CAD_ROTATION = None # json.load(open(os.path.join(CONF.PATH.SCAN2CAD, "scannet_instance_rotations.json")))
 
 # constants
@@ -77,12 +77,12 @@ def get_dataloader(args, scanrefer, scanrefer_new, all_scene_list, split, config
         dataloader = torch.utils.data.DataLoader(dataset,
                                                  batch_size=bs,
                                                  shuffle=False,
-                                                 num_workers=1,
+                                                 num_workers=0,
                                                  worker_init_fn=my_worker_init_fn,
                                                  sampler=sampler,
                                                  drop_last=True)
     else:
-        dataloader = DataLoader(dataset, batch_size=bs, shuffle=True if split == "train" else False, num_workers=1)
+        dataloader = DataLoader(dataset, batch_size=bs, shuffle=True if split == "train" else False, num_workers=0)
     # dataloader = DataLoader(dataset, batch_size=bs, shuffle=False, num_workers=1)
 
     return dataset, dataloader
@@ -280,17 +280,21 @@ def get_scanrefer(args):
         scanrefer_train = json.load(open(os.path.join(CONF.PATH.DATA, "Masked_ScanRefer_filtered_train.json")))
         # scanrefer_eval_train = json.load(open(os.path.join(CONF.PATH.DATA, "Masked_ScanRefer_filtered_train.json")))
         scanrefer_eval_val = json.load(open(os.path.join(CONF.PATH.DATA, "ScanRefer_filtered_val.json")))
-    elif args.dataset == "ReferIt3D":
-        scanrefer_train = json.load(open(os.path.join(CONF.PATH.DATA, "nr3d_train.json")))
+    elif args.dataset == "nr3d":
+        scanrefer_train = json.load(open(os.path.join(CONF.PATH.DATA, "nr3d", "masked_nr3d_train.json")))
         # scanrefer_eval_train = json.load(open(os.path.join(CONF.PATH.DATA, "nr3d_train.json")))
-        scanrefer_eval_val = json.load(open(os.path.join(CONF.PATH.DATA, "nr3d_val.json")))
+        scanrefer_eval_val = json.load(open(os.path.join(CONF.PATH.DATA, "nr3d", "masked_nr3d_test.json")))
+    elif args.dataset == "sr3d":
+        scanrefer_train = json.load(open(os.path.join(CONF.PATH.DATA, "sr3d", "masked_sr3d_train.json")))
+        # scanrefer_eval_train = json.load(open(os.path.join(CONF.PATH.DATA, "nr3d_train.json")))
+        scanrefer_eval_val = json.load(open(os.path.join(CONF.PATH.DATA, "sr3d", "masked_sr3d_test.json")))
     else:
         raise ValueError("Invalid dataset.")
 
     if args.debug:
-        scanrefer_train = [SCANREFER_TRAIN[0]]
+        scanrefer_train = [scanrefer_train[0]]
         # scanrefer_eval_train = [SCANREFER_TRAIN[0]]
-        scanrefer_eval_val = [SCANREFER_TRAIN[0]]
+        scanrefer_eval_val = [scanrefer_train[0]]
 
     if args.no_caption and args.no_reference:
         train_scene_list = get_scannet_scene_list("train")
@@ -298,7 +302,7 @@ def get_scanrefer(args):
 
         new_scanrefer_train = []
         for scene_id in train_scene_list:
-            data = deepcopy(SCANREFER_TRAIN[0])
+            data = deepcopy(scanrefer_train[0])
             data["scene_id"] = scene_id
             new_scanrefer_train.append(data)
 
@@ -310,7 +314,7 @@ def get_scanrefer(args):
 
         new_scanrefer_eval_val = []
         for scene_id in val_scene_list:
-            data = deepcopy(SCANREFER_TRAIN[0])
+            data = deepcopy(scanrefer_train[0])
             data["scene_id"] = scene_id
             new_scanrefer_eval_val.append(data)
     else:

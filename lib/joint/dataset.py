@@ -224,33 +224,40 @@ class ReferenceDataset(Dataset):
             ann_id = data["ann_id"]
             object_name = " ".join(data["object_name"].split("_"))
 
-            if self.split == "train":
-                attribute_mask_list = data["mask_first_list"][:CONF.TRAIN.MAX_GROUND_DES_LEN]
+            if "mask_list" in data:
+                # attribute_mask_list = data["mask_first_list"][:CONF.TRAIN.MAX_GROUND_DES_LEN]
                 relation_mask_list = data["mask_list"][:CONF.TRAIN.MAX_GROUND_DES_LEN]
-                attribute_mask_list = attribute_mask_list
-                relation_mask_list = relation_mask_list
-                attribute_mask_num = torch.tensor(attribute_mask_list).sum()
+                # attribute_mask_list = attribute_mask_list
+                # relation_mask_list = relation_mask_list
+                # attribute_mask_num = torch.tensor(attribute_mask_list).sum()
                 relation_mask_num = torch.tensor(relation_mask_list).sum()
 
                 all_mask_list_ = relation_mask_list
-                for i in range(len(attribute_mask_list)):
-                    all_mask_list_[i] = all_mask_list_[i] + attribute_mask_list[i]
-                all_mask_num = attribute_mask_num + relation_mask_num
-                attr_mask_list = np.ones(CONF.TRAIN.MAX_GROUND_DES_LEN) * 2
-                rel_mask_list = np.ones(CONF.TRAIN.MAX_GROUND_DES_LEN) * 2
+                all_mask_num = relation_mask_num
+
+                if "mask_first_list" in data:
+                    attribute_mask_list = data["mask_first_list"][:CONF.TRAIN.MAX_GROUND_DES_LEN]
+                    attribute_mask_list = attribute_mask_list
+                    attribute_mask_num = torch.tensor(attribute_mask_list).sum()
+                    for i in range(len(attribute_mask_list)):
+                        all_mask_list_[i] = all_mask_list_[i] + attribute_mask_list[i]
+                    all_mask_num += attribute_mask_num
+
+                # attr_mask_list = np.ones(CONF.TRAIN.MAX_GROUND_DES_LEN) * 2
+                # rel_mask_list = np.ones(CONF.TRAIN.MAX_GROUND_DES_LEN) * 2
                 all_mask_list = np.ones(CONF.TRAIN.MAX_GROUND_DES_LEN) * 2
-                for i in range(len(attribute_mask_list)):
-                    attr_mask_list[i] = attribute_mask_list[i]
-                for i in range(len(relation_mask_list)):
-                    rel_mask_list[i] = relation_mask_list[i]
+                # for i in range(len(attribute_mask_list)):
+                #     attr_mask_list[i] = attribute_mask_list[i]
+                # for i in range(len(relation_mask_list)):
+                #     rel_mask_list[i] = relation_mask_list[i]
                 for i in range(len(all_mask_list_)):
                     all_mask_list[i] = all_mask_list_[i]  # 0: words,  1: masked_words,  2: padding
             else:
-                attr_mask_list = np.ones(CONF.TRAIN.MAX_GROUND_DES_LEN)
-                rel_mask_list = np.ones(CONF.TRAIN.MAX_GROUND_DES_LEN)
-                all_mask_list = np.ones(CONF.TRAIN.MAX_GROUND_DES_LEN)
-                attribute_mask_num = torch.tensor(attr_mask_list).sum()
-                relation_mask_num = torch.tensor(rel_mask_list).sum()
+                # attr_mask_list = np.zeros(CONF.TRAIN.MAX_GROUND_DES_LEN)
+                # rel_mask_list = np.zeros(CONF.TRAIN.MAX_GROUND_DES_LEN)
+                all_mask_list = np.zeros(CONF.TRAIN.MAX_GROUND_DES_LEN)
+                # attribute_mask_num = torch.tensor(attr_mask_list).sum()
+                # relation_mask_num = torch.tensor(rel_mask_list).sum()
                 all_mask_num = torch.tensor(all_mask_list).sum()
 
             if scene_id not in lang:
@@ -275,10 +282,10 @@ class ReferenceDataset(Dataset):
                 lang_main[scene_id][object_id][ann_id]["unk"] = glove["unk"]
 
                 masks[scene_id][object_id][ann_id] = {}
-                masks[scene_id][object_id][ann_id]['attr_masks'] = {}
-                masks[scene_id][object_id][ann_id]['attr_masks_num'] = {}
-                masks[scene_id][object_id][ann_id]['rel_masks'] = {}
-                masks[scene_id][object_id][ann_id]['rel_masks_num'] = {}
+                # masks[scene_id][object_id][ann_id]['attr_masks'] = {}
+                # masks[scene_id][object_id][ann_id]['attr_masks_num'] = {}
+                # masks[scene_id][object_id][ann_id]['rel_masks'] = {}
+                # masks[scene_id][object_id][ann_id]['rel_masks_num'] = {}
                 masks[scene_id][object_id][ann_id]['all_masks'] = {}
                 masks[scene_id][object_id][ann_id]['all_masks_num'] = {}
 
@@ -340,10 +347,10 @@ class ReferenceDataset(Dataset):
             label[scene_id][object_id][ann_id] = labels
             lang_main[scene_id][object_id][ann_id]["main"] = main_embeddings
 
-            masks[scene_id][object_id][ann_id]['attr_masks'] = attr_mask_list
-            masks[scene_id][object_id][ann_id]['attr_masks_num'] = attribute_mask_num
-            masks[scene_id][object_id][ann_id]['rel_masks'] = rel_mask_list
-            masks[scene_id][object_id][ann_id]['rel_masks_num'] = relation_mask_num
+            # masks[scene_id][object_id][ann_id]['attr_masks'] = attr_mask_list
+            # masks[scene_id][object_id][ann_id]['attr_masks_num'] = attribute_mask_num
+            # masks[scene_id][object_id][ann_id]['rel_masks'] = rel_mask_list
+            # masks[scene_id][object_id][ann_id]['rel_masks_num'] = relation_mask_num
             masks[scene_id][object_id][ann_id]['all_masks'] = all_mask_list
             masks[scene_id][object_id][ann_id]['all_masks_num'] = all_mask_num
 
@@ -353,6 +360,26 @@ class ReferenceDataset(Dataset):
         vocab_path = VOCAB.format(dataset_name)
         if os.path.exists(vocab_path):
             self.vocabulary = json.load(open(vocab_path))
+            all_words = chain(*[data["token"][:CONF.TRAIN.MAX_GROUND_DES_LEN] for data in self.scanrefer])
+            word_counter = Counter(all_words)
+            word_counter = sorted([(k, v) for k, v in word_counter.items() if k in self.glove], key=lambda x: x[1],
+                                  reverse=True)
+            word_list = [k for k, _ in word_counter]
+            word2idx, idx2word = self.vocabulary["word2idx"], self.vocabulary["idx2word"]
+            new_list = []
+            for w in word_list:
+                if w not in word2idx.keys():
+                    new_list.append(w)
+            shift = len(word2idx)
+            for i, w in enumerate(new_list):
+                shifted_i = i + shift
+                word2idx[w] = shifted_i
+                idx2word[shifted_i] = w
+            self.vocabulary = {
+                "word2idx": word2idx,
+                "idx2word": idx2word
+            }
+            json.dump(self.vocabulary, open(vocab_path, "w"), indent=4)
         else:
             all_words = chain(*[data["token"][:CONF.TRAIN.MAX_GROUND_DES_LEN] for data in self.scanrefer])
             word_counter = Counter(all_words)
@@ -567,6 +594,8 @@ class ScannetReferenceDataset(ReferenceDataset):
         object_id_list = []
         object_name_list = []
         ann_id_list = []
+        easy_hard_list = []
+        dep_indep_list = []
 
         lang_feat_list = []
         lang_len_list = []
@@ -583,10 +612,10 @@ class ScannetReferenceDataset(ReferenceDataset):
         ground_main_lang_len_list = []
         ground_first_obj_list = []
 
-        attr_masks_list = []
-        attr_masks_num_list = []
-        rel_masks_list = []
-        rel_masks_num_list = []
+        # attr_masks_list = []
+        # attr_masks_num_list = []
+        # rel_masks_list = []
+        # rel_masks_num_list = []
         all_masks_list = []
         all_masks_num_list = []
 
@@ -595,6 +624,17 @@ class ScannetReferenceDataset(ReferenceDataset):
                 object_id = int(self.scanrefer_new[idx][i]["object_id"])
                 object_name = " ".join(self.scanrefer_new[idx][i]["object_name"].split("_"))
                 ann_id = self.scanrefer_new[idx][i]["ann_id"]
+                if self.name != "ScanRefer":
+                    easy_hard = 0 if int(self.scanrefer_new[idx][i]["hardness"]) <= 2 else 1
+                else:
+                    easy_hard = 0
+                if self.name != "ScanRefer":
+                    target_words = {'front', 'behind', 'back', 'right', 'left', 'facing', 'leftmost', 'rightmost',
+                                    'looking', 'across'}
+                    tokens = self.scanrefer_new[idx][i]["token"]
+                    dep_indep = 0 if len(set(tokens).intersection(target_words)) > 0 else 1
+                else:
+                    dep_indep = 0
 
                 lang_feat = self.lang[scene_id][str(object_id)][ann_id]
                 lang_len = len(self.scanrefer_new[idx][i]["token"]) + 2
@@ -613,16 +653,18 @@ class ScannetReferenceDataset(ReferenceDataset):
                 ground_main_lang_len = self.ground_lang_main[scene_id][str(object_id)][ann_id]["len"]
                 ground_first_obj = self.ground_lang_main[scene_id][str(object_id)][ann_id]["first_obj"]
 
-                attr_masks = self.masks[scene_id][str(object_id)][ann_id]["attr_masks"]
-                attr_masks_num = self.masks[scene_id][str(object_id)][ann_id]['attr_masks_num']
-                rel_masks = self.masks[scene_id][str(object_id)][ann_id]['rel_masks']
-                rel_masks_num = self.masks[scene_id][str(object_id)][ann_id]['rel_masks_num']
+                # attr_masks = self.masks[scene_id][str(object_id)][ann_id]["attr_masks"]
+                # attr_masks_num = self.masks[scene_id][str(object_id)][ann_id]['attr_masks_num']
+                # rel_masks = self.masks[scene_id][str(object_id)][ann_id]['rel_masks']
+                # rel_masks_num = self.masks[scene_id][str(object_id)][ann_id]['rel_masks_num']
                 all_masks = self.masks[scene_id][str(object_id)][ann_id]["all_masks"]
                 all_masks_num = self.masks[scene_id][str(object_id)][ann_id]['all_masks_num']
 
             object_id_list.append(object_id)
             object_name_list.append(object_name)
             ann_id_list.append(ann_id)
+            easy_hard_list.append(easy_hard)
+            dep_indep_list.append(dep_indep)
 
             lang_feat_list.append(lang_feat)
             lang_len_list.append(lang_len)
@@ -639,10 +681,10 @@ class ScannetReferenceDataset(ReferenceDataset):
             ground_main_lang_len_list.append(ground_main_lang_len)
             ground_first_obj_list.append(ground_first_obj)
 
-            attr_masks_list.append(attr_masks)
-            attr_masks_num_list.append(attr_masks_num)
-            rel_masks_list.append(rel_masks)
-            rel_masks_num_list.append(rel_masks_num)
+            # attr_masks_list.append(attr_masks)
+            # attr_masks_num_list.append(attr_masks_num)
+            # rel_masks_list.append(rel_masks)
+            # rel_masks_num_list.append(rel_masks_num)
             all_masks_list.append(all_masks)
             all_masks_num_list.append(all_masks_num)
 
@@ -839,7 +881,13 @@ class ScannetReferenceDataset(ReferenceDataset):
 
         object_cat_list = []
         for i in range(self.lang_num_max):
-            object_cat = self.raw2label[object_name_list[i]] if object_name_list[i] in self.raw2label else 17
+            object_cat = 17
+            if object_name_list[i] in self.raw2label:
+                object_cat = self.raw2label[object_name_list[i]]
+            else:
+                for tmp in object_name_list[i].split(" "):
+                    if tmp in self.raw2label:
+                        object_cat = self.raw2label[tmp]
             object_cat_list.append(object_cat)
 
         istrain = 0
@@ -920,10 +968,10 @@ class ScannetReferenceDataset(ReferenceDataset):
         data_dict["ground_main_lang_len_list"] = np.array(ground_main_lang_len_list).astype(np.int64)  # length of each main description
         data_dict["ground_first_obj_list"] = np.array(ground_first_obj_list).astype(np.int64)
 
-        data_dict['attr_masks_list'] = np.array(attr_masks_list).astype(np.int64)
-        data_dict['attr_masks_num_list'] = np.array(attr_masks_num_list).astype(np.int64)
-        data_dict['rel_masks_list'] = np.array(rel_masks_list).astype(np.int64)
-        data_dict['rel_masks_num_list'] = np.array(rel_masks_num_list).astype(np.int64)
+        # data_dict['attr_masks_list'] = np.array(attr_masks_list).astype(np.int64)
+        # data_dict['attr_masks_num_list'] = np.array(attr_masks_num_list).astype(np.int64)
+        # data_dict['rel_masks_list'] = np.array(rel_masks_list).astype(np.int64)
+        # data_dict['rel_masks_num_list'] = np.array(rel_masks_num_list).astype(np.int64)
         data_dict['all_masks_list'] = np.array(all_masks_list).astype(np.int64)
         data_dict['all_masks_num_list'] = np.array(all_masks_num_list).astype(np.int64)
 
@@ -936,6 +984,8 @@ class ScannetReferenceDataset(ReferenceDataset):
         data_dict["ref_box_corner_label_list"] = np.array(ref_box_corner_label_list).astype(np.float64)
         data_dict["object_id_list"] = np.array(object_id_list).astype(np.int64)
         data_dict["ann_id_list"] = np.array(ann_id_list).astype(np.int64)
+        data_dict["easy_hard_list"] = np.array(easy_hard_list).astype(np.int64)
+        data_dict["dep_indep_list"] = np.array(dep_indep_list).astype(np.int64)
         data_dict["object_cat_list"] = np.array(object_cat_list).astype(np.int64)
 
         # data_dict["idx"] = idx
@@ -1032,385 +1082,3 @@ class ScannetReferenceTestDataset():
             scene_data[scene_id]["mesh_vertices"] = np.load(os.path.join(CONF.PATH.SCANNET_DATA, scene_id)+"_aligned_vert.npy") # axis-aligned
 
         return scene_data
-
-
-class ScannetObjectDataset(ReferenceDataset):
-       
-    def __init__(self, scanrefer, scanrefer_all_scene, 
-        split="train", 
-        num_points=1024,
-        use_height=False, 
-        use_color=False, 
-        use_normal=False, 
-        use_multiview=False, 
-        augment=False,
-        is_caption=False,
-        is_eval=False,
-        whole_scene=False,
-        use_pn_features=False
-        ):
-
-        self.scanrefer = scanrefer
-        self.scanrefer_all_scene = scanrefer_all_scene # all scene_ids in scanrefer
-        self.split = split
-        self.num_points = num_points
-        self.use_color = use_color        
-        self.use_height = use_height
-        self.use_normal = use_normal        
-        self.use_multiview = use_multiview
-        self.augment = augment
-        self.is_caption = is_caption
-        self.is_eval = is_eval
-        self.whole_scene = whole_scene
-        self.use_pn_features = use_pn_features
-
-        # load data
-        self._load_data()
-        self.multiview_data = {}
-        self.pn_feature_data = {}
-
-        # filter data
-        self.scanrefer = self.scanrefer if is_caption else self._filter_object(self.scanrefer)
-        self.scanrefer = self._filter_scene(self.scanrefer) if is_eval and whole_scene else self.scanrefer
-
-        # weights
-        self.weights = np.ones((18))
-       
-    def __len__(self):
-        return len(self.scanrefer)
-
-    def __getitem__(self, idx):
-        start = time.time()
-        scene_id = self.scanrefer[idx]["scene_id"]
-        object_id = int(self.scanrefer[idx]["object_id"])
-        object_name = " ".join(self.scanrefer[idx]["object_name"].split("_"))
-        ann_id = self.scanrefer[idx]["ann_id"]
-        
-        # get language features
-        lang_feat = self.lang[scene_id][str(object_id)][ann_id]
-        lang_len = len(self.scanrefer[idx]["token"]) + 2
-        lang_len = lang_len if lang_len <= CONF.TRAIN.MAX_DES_LEN + 2 else CONF.TRAIN.MAX_DES_LEN + 2
-
-        # get pc
-        mesh_vertices = self.scene_data[scene_id]["mesh_vertices"]
-        instance_labels = self.scene_data[scene_id]["instance_labels"]
-        semantic_labels = self.scene_data[scene_id]["semantic_labels"]
-        instance_bboxes = self.scene_data[scene_id]["instance_bboxes"]
-
-        if not self.use_color:
-            point_cloud = mesh_vertices[:,0:3] # do not use color for now
-            pcl_color = mesh_vertices[:,3:6]
-        else:
-            point_cloud = mesh_vertices[:,0:6] 
-            point_cloud[:,3:6] = (point_cloud[:,3:6]-MEAN_COLOR_RGB)/256.0
-            pcl_color = point_cloud[:,3:6]
-        
-        if self.use_normal:
-            normals = mesh_vertices[:,6:9]
-            point_cloud = np.concatenate([point_cloud, normals],1)
-
-        if self.use_multiview:
-            # load multiview database
-            pid = mp.current_process().pid
-            if pid not in self.multiview_data:
-                self.multiview_data[pid] = h5py.File(MULTIVIEW_DATA, "r", libver="latest")
-
-            multiview = self.multiview_data[pid][scene_id]
-            point_cloud = np.concatenate([point_cloud, multiview],1)
-
-        if self.use_height:
-            floor_height = np.percentile(point_cloud[:,2],0.99)
-            height = point_cloud[:,2] - floor_height
-            point_cloud = np.concatenate([point_cloud, np.expand_dims(height, 1)],1) 
-
-        # ------------------------------- DATA AUGMENTATION ------------------------------ 
-        if self.augment and not self.use_pn_features:
-            if np.random.random() > 0.5:
-                # Flipping along the YZ plane
-                point_cloud[:,0] = -1 * point_cloud[:,0]
-                
-            if np.random.random() > 0.5:
-                # Flipping along the XZ plane
-                point_cloud[:,1] = -1 * point_cloud[:,1]
-
-            # Rotation along X-axis
-            rot_angle = (np.random.random()*np.pi/18) - np.pi/36 # -5 ~ +5 degree
-            rot_mat = rotx(rot_angle)
-            point_cloud[:,0:3] = np.dot(point_cloud[:,0:3], np.transpose(rot_mat))
-
-            # Rotation along Y-axis
-            rot_angle = (np.random.random()*np.pi/18) - np.pi/36 # -5 ~ +5 degree
-            rot_mat = roty(rot_angle)
-            point_cloud[:,0:3] = np.dot(point_cloud[:,0:3], np.transpose(rot_mat))
-            
-            # Rotation along up-axis/Z-axis
-            rot_angle = (np.random.random()*np.pi/18) - np.pi/36 # -5 ~ +5 degree
-            rot_mat = rotz(rot_angle)
-            point_cloud[:,0:3] = np.dot(point_cloud[:,0:3], np.transpose(rot_mat))
-
-            # Translation
-            point_cloud = self._translate(point_cloud)
-
-        num_bbox = instance_bboxes.shape[0]
-        target_masks = np.zeros((MAX_NUM_OBJ))
-        scene_object_ids = np.zeros((MAX_NUM_OBJ))
-
-        # find bbox parameters for target object
-        unique_instance_ids = instance_bboxes[:, -1]
-        unique_num_bbox = unique_instance_ids.shape[0]
-
-        object_bbox_corners = np.zeros((MAX_NUM_OBJ, 8, 3))
-        object_bbox_centers = np.zeros((MAX_NUM_OBJ, 3))
-
-        if self.whole_scene:
-            if self.use_pn_features: # load the pre-computed features
-                pid = mp.current_process().pid
-                if pid not in self.multiview_data:
-                    database_path = os.path.join(CONF.PATH.PN_FEATURES, "{}.hdf5".format(self.split))
-                    self.pn_feature_data[pid] = h5py.File(database_path, "r", libver="latest")
-
-                # load PointNet++ features
-                pn_features = self.pn_feature_data[pid][scene_id]
-                assert pn_features.shape[0] == unique_num_bbox
-                
-                # load object bounding box information
-                pn_corners = self.pn_feature_data[pid]["{}_box_corners".format(scene_id)]
-
-                # pick out the features for the train split for a random epoch
-                # the epoch pointer is always 0 in the eval mode for train split
-                # this doesn't apply to val split
-                if self.split == "train":
-                    if self.is_eval:
-                        epoch_id = 0
-                    else:
-                        epoch_id = random.choice(range(pn_features.shape[1]))
-                    
-                    pn_features = pn_features[:, epoch_id, :] # num_bboxes, 128
-                    pn_corners = pn_corners[:, epoch_id, :, :] # num_bboxes, 8, 3
-
-                # compute the object bounding box centers
-                pn_centers = np.zeros((MAX_NUM_OBJ, 3))
-                for i in range(unique_num_bbox):
-                    target_bbox = pn_corners[i]
-                    target_min = np.min(target_bbox, axis=0)
-                    target_max = np.max(target_bbox, axis=0)
-                    target_center = [(target_max[i] + target_min[i]) / 2 for i in range(3)]
-                    pn_centers[i] = np.array(target_center)
-
-                # indicate which feature is for the target object
-                for i in range(unique_num_bbox):
-                    if unique_instance_ids[i] == object_id:
-                        target_idx = i
-
-                # dump
-                target_point_cloud = np.zeros((MAX_NUM_OBJ, 128))
-                object_cat = np.zeros((MAX_NUM_OBJ))
-                target_point_cloud[:unique_num_bbox] = pn_features
-                object_cat[:unique_num_bbox] = instance_bboxes[:, -2]
-                object_bbox_corners[:unique_num_bbox] = pn_corners
-                object_bbox_centers = pn_centers
-
-            else: # extract points in the object bounding boxes
-                target_point_cloud = np.zeros((MAX_NUM_OBJ, self.num_points, point_cloud.shape[-1] + 1))
-                object_cat = np.zeros((MAX_NUM_OBJ))
-                for i in range(unique_num_bbox):
-                    target_bbox, target_cat = self._get_object_bbox(point_cloud, instance_labels, semantic_labels, unique_instance_ids[i])
-                    target_min = np.min(target_bbox, axis=0)
-                    target_max = np.max(target_bbox, axis=0)
-                    target_center = [(target_max[i] + target_min[i]) / 2 for i in range(3)]
-
-                    object_bbox_corners[i] = target_bbox
-                    object_bbox_centers[i] = np.array(target_center)
-
-                    # object_point_cloud = self._get_object_pc(point_cloud, target_bbox)
-                    object_point_cloud = self._get_object_pc(point_cloud, instance_labels, object_id)
-                    target_point_cloud[i] = object_point_cloud
-                    object_cat[i] = target_cat
-
-                    if unique_instance_ids[i] == object_id:
-                        target_idx = i
-
-            target_masks[:unique_num_bbox] = 1
-            scene_object_ids[:num_bbox] = unique_instance_ids
-        else:
-            if self.use_pn_features: # load the pre-computed features
-                pid = mp.current_process().pid
-                if pid not in self.multiview_data:
-                    database_path = os.path.join(CONF.PATH.PN_FEATURES, "{}.hdf5".format(self.split))
-                    self.pn_feature_data[pid] = h5py.File(database_path, "r", libver="latest")
-
-                pn_features = self.pn_feature_data[pid][scene_id]
-                assert pn_features.shape[0] == unique_num_bbox
-                
-                # pick out the features for the train split for a random epoch
-                # the epoch pointer is always 0 in the eval mode for train split
-                # this doesn't apply to val split
-                if self.split == "train":
-                    if self.is_eval:
-                        epoch_id = 0
-                    else:
-                        epoch_id = random.choice(range(pn_features.shape[1]))
-                    
-                    pn_features = pn_features[:, epoch_id, :]
-
-                # find the target object feature
-                for i in range(unique_num_bbox):
-                    if unique_instance_ids[i] == object_id:
-                        target_idx = i
-
-                # dump
-                target_point_cloud = pn_features[target_idx]
-            else: # extract points in the object bounding boxes
-                # find bbox parameters for target object
-                target_bbox, target_cat = self._get_object_bbox(point_cloud, instance_labels, semantic_labels, object_id)
-                target_idx = 0 # placeholder   
-
-                target_masks[:num_bbox] = 1   
-                scene_object_ids[:num_bbox] = instance_bboxes[:num_bbox, -1]
-
-                try:
-                    # target_point_cloud = self._get_object_pc(point_cloud, target_bbox)
-                    target_point_cloud = self._get_object_pc(point_cloud, instance_labels, object_id)
-                except Exception:
-                    with open("pc.obj", "w") as f:
-                        for i in range(point_cloud.shape[0]):
-                            f.write("v {} {} {} {} {} {}\n".format(
-                                point_cloud[i, 0], 
-                                point_cloud[i, 1], 
-                                point_cloud[i, 2], 
-                                point_cloud[i, 3], 
-                                point_cloud[i, 4], 
-                                point_cloud[i, 5]
-                            ))
-
-                    with open("bbox.obj", "w") as f:
-                        for i in range(target_bbox.shape[0]):
-                            f.write("v {} {} {} 255 0 0\n".format(
-                                target_bbox[i, 0], 
-                                target_bbox[i, 1], 
-                                target_bbox[i, 2]
-                            ))
-
-                    exit()
-
-            # object category
-            object_cat = self.raw2label[object_name] if object_name in self.raw2label else 17
-
-        data_dict = {}
-        data_dict["point_clouds"] = target_point_cloud.astype(np.float32) # point cloud data including features
-        data_dict["object_cat"] = np.array(object_cat).astype(np.int64) # object category 
-        data_dict["target_idx"] = np.array(target_idx).astype(np.int64) # idx of the target object in the scene batch
-        data_dict["target_masks"] = np.array(target_masks).astype(np.int64) # masks of valid objects in the scene batch
-        data_dict["scene_object_ids"] = scene_object_ids.astype(np.int64) # (MAX_NUM_OBJ,) object ids of all objects
-        data_dict["object_bbox_corners"] = object_bbox_corners.astype(np.float32) # box corners of the bounding boxes
-        data_dict["object_bbox_centers"] = object_bbox_centers.astype(np.float32) # box centers of the bounding boxes
-        data_dict["lang_feat"] = lang_feat.astype(np.float32) # language feature vectors
-        data_dict["lang_len"] = np.array(lang_len).astype(np.int64) # length of each description
-        data_dict["lang_ids"] = np.array(self.lang_ids[scene_id][str(object_id)][ann_id]).astype(np.int64)
-        data_dict["dataset_idx"] = np.array(idx).astype(np.int64)
-        data_dict["load_time"] = time.time() - start
-
-        return data_dict
-    
-    def _get_object_bbox(self, point_cloud, instance_labels, semantic_labels, object_id):
-        # get object coordinates
-        masks = instance_labels == object_id + 1
-        coords = point_cloud[masks, 0:3]
-
-        # get semantic label for the box
-        counts = Counter(semantic_labels[masks], return_counts=True)
-        sorted_counts = sorted(counts.items(), key=lambda x: x[1], reverse=True)
-        bbox_sem = sorted_counts[0][0]
-
-        # construct the bbox
-        xmin = np.min(coords[:, 0])
-        ymin = np.min(coords[:, 1])
-        zmin = np.min(coords[:, 2])
-        xmax = np.max(coords[:, 0])
-        ymax = np.max(coords[:, 1])
-        zmax = np.max(coords[:, 2])
-        
-        bbox = [
-            [xmin, ymin, zmin],
-            [xmax, ymin, zmin],
-            [xmax, ymax, zmin],
-            [xmin, ymax, zmin],
-
-            [xmin, ymin, zmax],
-            [xmax, ymin, zmax],
-            [xmax, ymax, zmax],
-            [xmin, ymax, zmax]
-        ]
-        bbox = np.array(bbox)
-
-        return bbox, bbox_sem
-
-    # def _get_object_pc(self, point_cloud, target_bbox):
-    #     # crop target object
-    #     curmin = np.min(target_bbox, axis=0)
-    #     curmax = np.max(target_bbox, axis=0)
-    #     target_mask = np.sum((point_cloud[:, :3] >= (curmin - 0.05)) * (point_cloud[:, :3] <= (curmax + 0.05)), axis=1) == 3
-
-    #     target_point_cloud, _ = random_sampling(point_cloud[target_mask], self.num_points, return_choices=True)
-
-    #     return target_point_cloud
-
-    def _get_object_pc(self, point_cloud, instance_labels, target_object_id):
-        # random sampling
-        point_cloud, choices = random_sampling(point_cloud, self.num_points, return_choices=True)        
-        instance_labels = instance_labels[choices]
-
-        # create object masks
-        target_object_masks = instance_labels == (target_object_id + 1) # 0: unannotated
-        target_object_masks = target_object_masks.astype(np.float32)
-
-        # concatenate to point cloud
-        target_point_cloud = np.concatenate([point_cloud, target_object_masks[:, np.newaxis]], axis=1)
-
-        return target_point_cloud
-
-    def _filter_object(self, data):
-        new_data = []
-        cache = []
-        for d in data:
-            scene_id = d["scene_id"]
-            object_id = d["object_id"]
-
-            entry = "{}|{}".format(scene_id, object_id)
-
-            if entry not in cache:
-                cache.append(entry)
-                new_data.append(d)
-
-        return new_data
-
-    def _filter_scene(self, data):
-        new_data = []
-        cache = []
-        for d in data:
-            scene_id = d["scene_id"]
-
-            entry = "{}".format(scene_id)
-
-            if entry not in cache:
-                cache.append(entry)
-                new_data.append(d)
-
-        return new_data
-
-    def _translate(self, point_set):
-        # unpack
-        coords = point_set[:, :3]
-
-        # translation factors
-        x_factor = np.random.choice(np.arange(-0.5, 0.501, 0.001), size=1)[0]
-        y_factor = np.random.choice(np.arange(-0.5, 0.501, 0.001), size=1)[0]
-        z_factor = np.random.choice(np.arange(-0.5, 0.501, 0.001), size=1)[0]
-        factor = [x_factor, y_factor, z_factor]
-        
-        # dump
-        coords += factor
-        point_set[:, :3] = coords
-
-        return point_set
-    

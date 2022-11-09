@@ -19,6 +19,8 @@ from models.groupfree import GroupFreeDetector
 from lib.ap_helper.ap_helper_fcos import parse_predictions
 import torch.nn.functional as F
 
+from torch.profiler import record_function
+
 
 class JointNet(nn.Module):
     def __init__(self, vocabulary,
@@ -46,10 +48,11 @@ class JointNet(nn.Module):
         self.num_target = num_target
         self.num_other = num_proposal - num_target
         self.num_rec_other = min(num_rec_other, self.num_other)
-        self.vocab_size = len(vocabulary["idx2word"])
+        self.vocab_size = 3235 if args.dataset == "nr3d" else len(vocabulary["idx2word"])
         self.emb_size = emb_size
         self.hidden_size = hidden_size
         self.args = args
+        # print(len(vocabulary["idx2word"]))
 
         if args.pretrain_model_on:
             if args.pretrain_model == "votenet":
@@ -116,6 +119,7 @@ class JointNet(nn.Module):
         """
 
         # # hough voting
+        # with record_function("pretrain model"):
         if self.args.pretrain_model_on:
             if self.args.pretrain_model == "votenet":
                 data_dict = self.backbone_net(data_dict)
@@ -142,10 +146,9 @@ class JointNet(nn.Module):
 
         # data_dict = self.contranet(data_dict)
 
-        self.divide_proposals(data_dict)
-
         data_dict = self.match(data_dict)
 
+        self.divide_proposals(data_dict)
         # reconstruction
         if not is_eval:
             self.reconstruct(data_dict)
@@ -179,11 +182,17 @@ class JointNet(nn.Module):
         lang_feat = data_dict["lang_emb"].reshape(bs, len_num_max, hidden_dim)  # bs, len_num_max, dim
         mil_score = torch.matmul(lang_feat, data_dict["bbox_feature"].permute(0, 2, 1))  # bs, len_num_max, num_proposal
         mil_score = mil_score.flatten(0, 1).softmax(-1)  # bs * num, num_proposal
+
+        # match_score = self.match.get_ref_score(data_dict)
         weights = torch.zeros_like(pred_by_target_cls)
+        # weights = match_score
         if not self.args.no_mil:
             weights += 0.5 * mil_score
         if not self.args.no_text:
-            weights += pred_by_target_cls + cls_sim_score
+            weights += pred_by_target_cls
+            if self.args.pretrain_data == "scannet":
+                weights += cls_sim_score
+        data_dict["coarse_weights"] = weights
         # weights = pred_by_target_cls  # + cls_sim_score + 0.5 * mil_score
 
         # objectness_preds_batch = torch.argmax(data_dict['objectness_scores'], 2).long()
@@ -196,23 +205,22 @@ class JointNet(nn.Module):
 
         sorted_ids = torch.sort(weights, descending=True, dim=1)[1]
         target_ids = sorted_ids[:, :self.num_target]
-        other_ids = sorted_ids[:, self.num_target:]
+        # other_ids = sorted_ids[:, self.num_target:]
         target_feat = torch.gather(bbox_feature, 1, target_ids.unsqueeze(-1).expand(-1, -1, hidden_dim))  # bs*len_num_max, num_target, hiddem_dim
-        other_feat = torch.gather(bbox_feature, 1, other_ids.unsqueeze(-1).expand(-1, -1, hidden_dim))
+        # other_feat = torch.gather(bbox_feature, 1, other_ids.unsqueeze(-1).expand(-1, -1, hidden_dim))
 
         data_dict["target_ids"] = target_ids.reshape(bs, len_num_max, self.num_target)
-        data_dict["other_ids"] = other_ids.reshape(bs, len_num_max, self.num_other)
+        # data_dict["other_ids"] = other_ids.reshape(bs, len_num_max, self.num_other)
         data_dict["target_feat"] = target_feat.reshape(bs, len_num_max, self.num_target, hidden_dim)
-        data_dict["other_feat"] = other_feat.reshape(bs, len_num_max, self.num_other, hidden_dim)
+        # data_dict["other_feat"] = other_feat.reshape(bs, len_num_max, self.num_other, hidden_dim)
 
     def reconstruct(self, data_dict):
         target_feat = data_dict["target_feat"]  # bs, len_num_max, num_target, dim
-        other_feat = data_dict["other_feat"]
-        target_ids = data_dict["target_ids"]  # bs, len_num_max, num_target
-        other_ids = data_dict["other_ids"]
+        # other_feat = data_dict["other_feat"]
+        # target_ids = data_dict["target_ids"]  # bs, len_num_max, num_target
+        # other_ids = data_dict["other_ids"]
         # words_feat = data_dict["ground_lang_feat_list"]
         words_feat = self.lang.masked_lang_feat(data_dict)
-        # print("words_feat", words_feat.shape)
         # masks_list = data_dict["all_masks_list"]
         bs, len_num_max, _, hidden_dim = target_feat.shape
         max_des_len = words_feat.shape[2]
@@ -221,12 +229,12 @@ class JointNet(nn.Module):
         masks_list = masks_list.masked_fill(data_dict["all_masks_list"][:, :, :max_des_len] == 2, 2)
         data_dict["rand_masks_list"] = masks_list
         # masks_list = masks_list[:, :, :max_des_len]
-        xyz = data_dict['pred_center'].unsqueeze(1).expand(-1, len_num_max, -1, -1).flatten(0, 1)  # bs * len_num_max, num_proposal, 3
-        target_ids = target_ids.flatten(0, 1)  # bs*len_num_max, num_target
-        other_ids = other_ids.flatten(0, 1)
-        target_xyzs = torch.gather(xyz, dim=1, index=target_ids.unsqueeze(-1).expand(-1, -1, 3))  # bs*len_num_max, num_target, 3
-        other_xyzs = torch.gather(xyz, dim=1, index=other_ids.unsqueeze(-1).expand(-1, -1, 3))
-        other_feat = other_feat.reshape(bs*len_num_max, self.num_other, hidden_dim)
+        # xyz = data_dict['pred_center'].unsqueeze(1).expand(-1, len_num_max, -1, -1).flatten(0, 1)  # bs * len_num_max, num_proposal, 3
+        # target_ids = target_ids.flatten(0, 1)  # bs*len_num_max, num_target
+        # other_ids = other_ids.flatten(0, 1)
+        # target_xyzs = torch.gather(xyz, dim=1, index=target_ids.unsqueeze(-1).expand(-1, -1, 3))  # bs*len_num_max, num_target, 3
+        # other_xyzs = torch.gather(xyz, dim=1, index=other_ids.unsqueeze(-1).expand(-1, -1, 3))
+        # other_feat = other_feat.reshape(bs*len_num_max, self.num_other, hidden_dim)
         # nms_masks = self.get_nms_masks(data_dict, len_num_max)
         device = target_feat.device
         word_logits = torch.zeros(bs, len_num_max, self.num_target, max_des_len, self.vocab_size).to(device)

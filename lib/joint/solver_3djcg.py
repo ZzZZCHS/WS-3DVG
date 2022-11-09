@@ -400,7 +400,8 @@ class Solver():
                 use_lang_classifier=self.use_lang_classifier,
                 is_eval=is_eval,
                 use_cat_rand=True,
-                use_best_in_cat=True
+                use_best_in_cat=True,
+                k=CONF.topk
             )
             # dump
             self._running_log["lang_acc"] = data_dict["lang_acc"].item()

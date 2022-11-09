@@ -8,6 +8,7 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 import numpy as np
+import time
 
 from torch.utils.data import DataLoader
 from datetime import datetime
@@ -15,19 +16,30 @@ from tqdm import tqdm
 from copy import deepcopy
 
 sys.path.append(os.path.join(os.getcwd())) # HACK add the root folder
-from lib.configs.config_joint import CONF
+from lib.configs.config import CONF
 from lib.joint.dataset import ScannetReferenceDataset
-from lib.joint.solver import Solver
 from lib.ap_helper.ap_helper_fcos import APCalculator, parse_predictions, parse_groundtruths
 from lib.loss_helper.loss_joint import get_joint_loss
 from lib.joint.eval_ground import get_eval
 from models.jointnet.jointnet import JointNet
 from data.scannet.model_util_scannet import ScannetDatasetConfig, SunToScannetDatasetConfig
+from torch.profiler import profile, record_function, ProfilerActivity
 
 print('Import Done', flush=True)
-SCANREFER_TRAIN = json.load(open(os.path.join(CONF.PATH.DATA, "ScanRefer_filtered_train.json")))
-SCANREFER_VAL = json.load(open(os.path.join(CONF.PATH.DATA, "ScanRefer_filtered_val.json")))
+if CONF.dataset == "ScanRefer":
+    SCANREFER_TRAIN = json.load(open(os.path.join(CONF.PATH.DATA, "Masked_ScanRefer_filtered_train.json")))
+    SCANREFER_VAL = json.load(open(os.path.join(CONF.PATH.DATA, "ScanRefer_filtered_val.json")))
+elif CONF.dataset == "nr3d":
+    SCANREFER_TRAIN = json.load(open(os.path.join(CONF.PATH.DATA, "nr3d", "masked_nr3d_train.json")))
+    SCANREFER_VAL = json.load(open(os.path.join(CONF.PATH.DATA, "nr3d", "masked_nr3d_test.json")))
+elif CONF.dataset == "sr3d":
+    SCANREFER_TRAIN = json.load(open(os.path.join(CONF.PATH.DATA, "sr3d", "masked_sr3d_train.json")))
+    SCANREFER_VAL = json.load(open(os.path.join(CONF.PATH.DATA, "sr3d", "masked_sr3d_test.json")))
 # SCANREFER_VAL = json.load(open(os.path.join(CONF.PATH.DATA, "ScanRefer_filtered_test.json")))
+
+
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 def get_dataloader(args, scanrefer, scanrefer_new, all_scene_list, split, config):
     dataset = ScannetReferenceDataset(
@@ -41,7 +53,7 @@ def get_dataloader(args, scanrefer, scanrefer_new, all_scene_list, split, config
         use_height=(not args.no_height),
         use_normal=args.use_normal, 
         use_multiview=args.use_multiview,
-        lang_num_max=args.lang_num_max
+        lang_num_max=args.lang_num_max,
     )
     print("evaluate on {} samples".format(len(dataset)))
 
@@ -51,7 +63,8 @@ def get_dataloader(args, scanrefer, scanrefer_new, all_scene_list, split, config
 
 def get_model(args, DC, dataset):
     # load model
-    input_channels = int(args.use_multiview) * 128 + int(args.use_normal) * 3 + int(args.use_color) * 3 + int(not args.no_height)
+    # input_channels = int(args.use_multiview) * 128 + int(args.use_normal) * 3 + int(args.use_color) * 3 + int(not args.no_height)
+    input_channels = int(not args.no_height) + int(args.use_color) * 3
     model = JointNet(
         # num_class=DC.num_class,
         vocabulary=dataset.vocabulary,
@@ -61,15 +74,21 @@ def get_model(args, DC, dataset):
         # mean_size_arr=DC.mean_size_arr,
         input_feature_dim=input_channels,
         width=args.width,
+        hidden_size=args.hidden_size,
         num_proposal=args.num_proposals,
-        no_caption=True,
-        use_topdown=False,
+        num_target=args.num_target,
+        no_caption=args.no_caption,
+        use_topdown=args.use_topdown,
+        num_locals=args.num_locals,
+        query_mode=args.query_mode,
         use_lang_classifier=(not args.no_lang_cls),
         use_bidir=args.use_bidir,
-        dataset_config=DC
+        no_reference=args.no_reference,
+        dataset_config=DC,
+        args=args
     ).cuda()
 
-    model_name = "model_last.pth" if args.detection else "model.pth"
+    model_name = "model.pth"
     path = os.path.join(CONF.PATH.OUTPUT, args.folder, model_name)
     model.load_state_dict(torch.load(path), strict=False)
     model.eval()
@@ -145,21 +164,17 @@ def eval_ref(args):
 
     # model
     model = get_model(args, DC, dataset)
+    print("\nparam stats:")
+    print("model:", count_parameters(model))
+    print("backbone:", count_parameters(model.group_free))
+    print("recon:", count_parameters(model.recnet))
 
     # config
-    POST_DICT = {
-        "remove_empty_box": True, 
-        "use_3d_nms": True, 
-        "nms_iou": 0.25,
-        "use_old_type_nms": False, 
-        "cls_nms": True, 
-        "per_class_proposal": True,
-        "conf_thresh": 0.05,
-        "dataset_config": DC
-    } if not args.no_nms else None
+    POST_DICT = None
 
     # random seeds
     seeds = [args.seed] + [2 * i for i in range(args.repeat - 1)]
+    mean_forward_time = 0
 
     # evaluate
     print("evaluating...")
@@ -167,8 +182,14 @@ def eval_ref(args):
     pred_path = os.path.join(CONF.PATH.OUTPUT, args.folder, "predictions.p")
     gen_flag = (not os.path.exists(score_path)) or args.force or args.repeat > 1
     if gen_flag:
-        ref_acc_all = []
+        # ref_acc_all = []
         ious_all = []
+        top5_ious_all = []
+        rec_ious_all = []
+        top5_rec_ious_all = []
+        rand_ious_all = []
+        top5_rand_ious_all = []
+        best_ious_all = []
         masks_all = []
         others_all = []
         lang_acc_all = []
@@ -178,52 +199,65 @@ def eval_ref(args):
             torch.backends.cudnn.deterministic = True
             torch.backends.cudnn.benchmark = False
             np.random.seed(seed)
+            torch.cuda.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
 
             print("generating the scores for seed {}...".format(seed))
-            ref_acc = []
+            # ref_acc = []
             ious = []
+            top5_ious = []
+            rec_ious = []
+            top5_rec_ious = []
+            rand_ious = []
+            top5_rand_ious = []
+            best_ious = []
+
             masks = []
             others = []
             lang_acc = []
             predictions = {}
+            forward_times = []
             for data in tqdm(dataloader):
                 for key in data:
                     data[key] = data[key].cuda()
 
                 # feed
                 with torch.no_grad():
+                    # with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
                     data["epoch"] = 0
-                    data = model(data)
-                    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+                    start = time.time()
+                    # with record_function("model_inference"):
+                    data = model(data, is_eval=args.is_eval)
+                    # with record_function("loss_calc"):
                     data = get_joint_loss(
                         data_dict=data,
-                        device=device,
                         config=DC,
-                        weights=0,
-                        detection=True,
-                        caption=False,
-                        reference=True, 
-                        use_lang_classifier=not args.no_lang_cls,
-                        orientation=False,
-                        distance=False,
+                        is_eval=args.is_eval
                     )
+                    # with record_function("eval"):
                     data = get_eval(
-                        data_dict=data, 
+                        data_dict=data,
                         config=DC,
-                        reference=True, 
+                        reference=True,
                         use_lang_classifier=not args.no_lang_cls,
-                        use_oracle=args.use_oracle,
-                        use_cat_rand=args.use_cat_rand,
+                        use_cat_rand=False,
                         use_best=args.use_best,
-                        post_processing=POST_DICT
+                        use_random=args.eval_rand,
+                        is_eval=args.is_eval,
+                        k=args.topk
                     )
-
-                    ref_acc += data["ref_acc"]
+                    forward_times.append(time.time() - start)
+                    # ref_acc += data["ref_acc"]
                     ious += data["ref_iou"]
+                    top5_ious += data["top5_iou"]
+                    rec_ious += data["rec_iou"]
+                    top5_rec_ious += data["top5_rec_iou"]
+                    rand_ious += data["rand_iou"]
+                    top5_rand_ious += data["top5_rand_iou"]
+                    best_ious += data["best_iou"]
                     masks += data["ref_multiple_mask"]
                     others += data["ref_others_mask"]
                     lang_acc.append(data["lang_acc"].item())
-
                     # store predictions
                     ids = data["scan_idx"].detach().cpu().numpy()
                     for i in range(ids.shape[0]):
@@ -244,21 +278,38 @@ def eval_ref(args):
                         predictions[scene_id][object_id][ann_id]["pred_bbox"] = data["pred_bboxes"][i]
                         predictions[scene_id][object_id][ann_id]["gt_bbox"] = data["gt_bboxes"][i]
                         predictions[scene_id][object_id][ann_id]["iou"] = data["ref_iou"][i]
-
+                # print(prof.key_averages().table(sort_by="cuda_time_total"))
+                # print(prof.key_averages().table(sort_by="cpu_time_total"))
+                # sys.exit()
+            # print(prof.key_averages().table(sort_by="cuda_time_total"))
+            # print(prof.key_averages().table(sort_by="cpu_time_total"))
+            # sys.exit()
+            mean_forward_time = np.mean(forward_times)
+            # print("mean forward time:", mean_forward_time)
             # save the last predictions
             with open(pred_path, "wb") as f:
                 pickle.dump(predictions, f)
 
             # save to global
-            ref_acc_all.append(ref_acc)
             ious_all.append(ious)
+            top5_ious_all.append(top5_ious)
+            rec_ious_all.append(rec_ious)
+            top5_rec_ious_all.append(top5_rec_ious)
+            rand_ious_all.append(rand_ious)
+            top5_rand_ious_all.append(top5_rand_ious)
+            best_ious_all.append(best_ious)
             masks_all.append(masks)
             others_all.append(others)
             lang_acc_all.append(lang_acc)
 
         # convert to numpy array
-        ref_acc = np.array(ref_acc_all)
         ious = np.array(ious_all)
+        top5_ious = np.array(top5_ious_all)
+        rec_ious = np.array(rec_ious_all)
+        top5_rec_ious = np.array(top5_rec_ious_all)
+        rand_ious = np.array(rand_ious_all)
+        top5_rand_ious = np.array(top5_rand_ious_all)
+        best_ious = np.array(best_ious_all)
         masks = np.array(masks_all)
         others = np.array(others_all)
         lang_acc = np.array(lang_acc_all)
@@ -266,8 +317,12 @@ def eval_ref(args):
         # save the global scores
         with open(score_path, "wb") as f:
             scores = {
-                "ref_acc": ref_acc_all,
                 "ious": ious_all,
+                "top5_ious": top5_ious_all,
+                "rec_ious": rec_ious_all,
+                "top5_rec_ious": top5_rec_ious_all,
+                "rand_ious": rand_ious_all,
+                "top5_rand_ious": top5_rand_ious_all,
                 "masks": masks_all,
                 "others": others_all,
                 "lang_acc": lang_acc_all
@@ -280,11 +335,24 @@ def eval_ref(args):
             scores = pickle.load(f)
 
             # unpack
-            ref_acc = np.array(scores["ref_acc"])
             ious = np.array(scores["ious"])
+            top5_ious = np.array(scores["top5_ious"])
+            if not args.is_eval:
+                rec_ious = np.array(scores["rec_ious"])
+                top5_rec_ious = np.array(scores["top5_rec_ious"])
+            if args.eval_rand:
+                rand_ious = np.array(scores["rand_ious"])
+                top5_rand_ious = np.array(scores["top5_rand_ious"])
             masks = np.array(scores["masks"])
             others = np.array(scores["others"])
             lang_acc = np.array(scores["lang_acc"])
+
+    if args.eval_rand:
+        ious = rand_ious
+        top5_ious = top5_rand_ious
+
+    if args.use_best:
+        ious = best_ious
 
     multiple_dict = {
         "unique": 0,
@@ -316,84 +384,150 @@ def eval_ref(args):
     scores = {}
     for k, v in multiple_dict.items():
         for k_o in others_dict.keys():
-            ref_accs, acc_025ious, acc_05ious = [], [], []
+            top5_acc_025ious, top5_acc_05ious, acc_025ious, acc_05ious = [], [], [], []
             for i in range(masks.shape[0]):
-                running_ref_acc = np.mean(ref_acc[i][np.logical_and(masks[i] == multiple_dict[k], others[i] == others_dict[k_o])]) \
-                    if np.sum(np.logical_and(masks[i] == multiple_dict[k], others[i] == others_dict[k_o])) > 0 else 0
                 running_acc_025iou = ious[i][np.logical_and(np.logical_and(masks[i] == multiple_dict[k], others[i] == others_dict[k_o]), ious[i] >= 0.25)].shape[0] \
                     / ious[i][np.logical_and(masks[i] == multiple_dict[k], others[i] == others_dict[k_o])].shape[0] \
                     if np.sum(np.logical_and(masks[i] == multiple_dict[k], others[i] == others_dict[k_o])) > 0 else 0
                 running_acc_05iou = ious[i][np.logical_and(np.logical_and(masks[i] == multiple_dict[k], others[i] == others_dict[k_o]), ious[i] >= 0.5)].shape[0] \
                     / ious[i][np.logical_and(masks[i] == multiple_dict[k], others[i] == others_dict[k_o])].shape[0] \
                     if np.sum(np.logical_and(masks[i] == multiple_dict[k], others[i] == others_dict[k_o])) > 0 else 0
+                running_top5_acc_025iou = top5_ious[i][np.logical_and(
+                    np.logical_and(masks[i] == multiple_dict[k], others[i] == others_dict[k_o]),
+                    top5_ious[i] >= 0.25)].shape[0] / top5_ious[i][np.logical_and(masks[i] == multiple_dict[k],
+                                                                                  others[i] == others_dict[k_o])].shape[
+                                              0] if np.sum(
+                    np.logical_and(masks[i] == multiple_dict[k], others[i] == others_dict[k_o])) > 0 else 0
+                running_top5_acc_05iou = top5_ious[i][np.logical_and(
+                    np.logical_and(masks[i] == multiple_dict[k], others[i] == others_dict[k_o]),
+                    top5_ious[i] >= 0.5)].shape[
+                                             0] / top5_ious[i][np.logical_and(masks[i] == multiple_dict[k],
+                                                                              others[i] == others_dict[k_o])].shape[
+                                             0] if np.sum(
+                    np.logical_and(masks[i] == multiple_dict[k], others[i] == others_dict[k_o])) > 0 else 0
 
                 # store
-                ref_accs.append(running_ref_acc)
                 acc_025ious.append(running_acc_025iou)
                 acc_05ious.append(running_acc_05iou)
+                top5_acc_025ious.append(running_top5_acc_025iou)
+                top5_acc_05ious.append(running_top5_acc_05iou)
 
             if k not in scores:
                 scores[k] = {k_o: {} for k_o in others_dict.keys()}
 
-            scores[k][k_o]["ref_acc"] = np.mean(ref_accs)
             scores[k][k_o]["acc@0.25iou"] = np.mean(acc_025ious)
             scores[k][k_o]["acc@0.5iou"] = np.mean(acc_05ious)
+            scores[k][k_o]["top5_acc@0.25iou"] = np.mean(top5_acc_025ious)
+            scores[k][k_o]["top5_acc@0.5iou"] = np.mean(top5_acc_05ious)
 
-        ref_accs, acc_025ious, acc_05ious = [], [], []
+        top5_acc_025ious, top5_acc_05ious, acc_025ious, acc_05ious = [], [], [], []
         for i in range(masks.shape[0]):
-            running_ref_acc = np.mean(ref_acc[i][masks[i] == multiple_dict[k]]) if np.sum(masks[i] == multiple_dict[k]) > 0 else 0
             running_acc_025iou = ious[i][np.logical_and(masks[i] == multiple_dict[k], ious[i] >= 0.25)].shape[0] \
                 / ious[i][masks[i] == multiple_dict[k]].shape[0] if np.sum(masks[i] == multiple_dict[k]) > 0 else 0
             running_acc_05iou = ious[i][np.logical_and(masks[i] == multiple_dict[k], ious[i] >= 0.5)].shape[0] \
                 / ious[i][masks[i] == multiple_dict[k]].shape[0] if np.sum(masks[i] == multiple_dict[k]) > 0 else 0
+            running_top5_acc_025iou = \
+            top5_ious[i][np.logical_and(masks[i] == multiple_dict[k], top5_ious[i] >= 0.25)].shape[0] \
+            / top5_ious[i][masks[i] == multiple_dict[k]].shape[0] if np.sum(
+                masks[i] == multiple_dict[k]) > 0 else 0
+            running_top5_acc_05iou = \
+            top5_ious[i][np.logical_and(masks[i] == multiple_dict[k], top5_ious[i] >= 0.5)].shape[0] \
+            / top5_ious[i][masks[i] == multiple_dict[k]].shape[0] if np.sum(
+                masks[i] == multiple_dict[k]) > 0 else 0
 
             # store
-            ref_accs.append(running_ref_acc)
             acc_025ious.append(running_acc_025iou)
             acc_05ious.append(running_acc_05iou)
+            top5_acc_025ious.append(running_top5_acc_025iou)
+            top5_acc_05ious.append(running_top5_acc_05iou)
 
         scores[k]["overall"] = {}
-        scores[k]["overall"]["ref_acc"] = np.mean(ref_accs)
         scores[k]["overall"]["acc@0.25iou"] = np.mean(acc_025ious)
         scores[k]["overall"]["acc@0.5iou"] = np.mean(acc_05ious)
+        scores[k]["overall"]["top5_acc@0.25iou"] = np.mean(top5_acc_025ious)
+        scores[k]["overall"]["top5_acc@0.5iou"] = np.mean(top5_acc_05ious)
 
     scores["overall"] = {}
     for k_o in others_dict.keys():
-        ref_accs, acc_025ious, acc_05ious = [], [], []
+        top5_acc_025ious, top5_acc_05ious, acc_025ious, acc_05ious = [], [], [], []
         for i in range(masks.shape[0]):
-            running_ref_acc = np.mean(ref_acc[i][others[i] == others_dict[k_o]]) if np.sum(others[i] == others_dict[k_o]) > 0 else 0
             running_acc_025iou = ious[i][np.logical_and(others[i] == others_dict[k_o], ious[i] >= 0.25)].shape[0] \
                 / ious[i][others[i] == others_dict[k_o]].shape[0] if np.sum(others[i] == others_dict[k_o]) > 0 else 0
             running_acc_05iou = ious[i][np.logical_and(others[i] == others_dict[k_o], ious[i] >= 0.5)].shape[0] \
                 / ious[i][others[i] == others_dict[k_o]].shape[0] if np.sum(others[i] == others_dict[k_o]) > 0 else 0
+            running_top5_acc_025iou = \
+            top5_ious[i][np.logical_and(others[i] == others_dict[k_o], top5_ious[i] >= 0.25)].shape[0] \
+            / top5_ious[i][others[i] == others_dict[k_o]].shape[0] if np.sum(
+                others[i] == others_dict[k_o]) > 0 else 0
+            running_top5_acc_05iou = \
+            top5_ious[i][np.logical_and(others[i] == others_dict[k_o], top5_ious[i] >= 0.5)].shape[0] \
+            / top5_ious[i][others[i] == others_dict[k_o]].shape[0] if np.sum(
+                others[i] == others_dict[k_o]) > 0 else 0
 
             # store
-            ref_accs.append(running_ref_acc)
             acc_025ious.append(running_acc_025iou)
             acc_05ious.append(running_acc_05iou)
+            top5_acc_025ious.append(running_top5_acc_025iou)
+            top5_acc_05ious.append(running_top5_acc_05iou)
 
         # aggregate
         scores["overall"][k_o] = {}
-        scores["overall"][k_o]["ref_acc"] = np.mean(ref_accs)
         scores["overall"][k_o]["acc@0.25iou"] = np.mean(acc_025ious)
         scores["overall"][k_o]["acc@0.5iou"] = np.mean(acc_05ious)
+        scores["overall"][k_o]["top5_acc@0.25iou"] = np.mean(top5_acc_025ious)
+        scores["overall"][k_o]["top5_acc@0.5iou"] = np.mean(top5_acc_05ious)
    
-    ref_accs, acc_025ious, acc_05ious = [], [], []
+    top5_acc_025ious, top5_acc_05ious, acc_025ious, acc_05ious = [], [], [], []
+    top5_rec_acc_025ious, top5_rec_acc_05ious, rec_acc_025ious, rec_acc_05ious = [], [], [], []
+    # top5_rand_acc_025ious, top5_rand_acc_05ious, rand_acc_025ious, rand_acc_05ious = [], [], [], []
     for i in range(masks.shape[0]):
-        running_ref_acc = np.mean(ref_acc[i])
         running_acc_025iou = ious[i][ious[i] >= 0.25].shape[0] / ious[i].shape[0]
         running_acc_05iou = ious[i][ious[i] >= 0.5].shape[0] / ious[i].shape[0]
+        running_top5_acc_025iou = top5_ious[i][top5_ious[i] >= 0.25].shape[0] / top5_ious[i].shape[0]
+        running_top5_acc_05iou = top5_ious[i][top5_ious[i] >= 0.5].shape[0] / top5_ious[i].shape[0]
+        if not args.is_eval:
+            running_rec_acc_025iou = rec_ious[i][rec_ious[i] >= 0.25].shape[0] / rec_ious[i].shape[0]
+            running_rec_acc_05iou = rec_ious[i][rec_ious[i] >= 0.5].shape[0] / rec_ious[i].shape[0]
+            running_top5_rec_acc_025iou = top5_rec_ious[i][top5_rec_ious[i] >= 0.25].shape[0] / top5_rec_ious[i].shape[0]
+            running_top5_rec_acc_05iou = top5_rec_ious[i][top5_rec_ious[i] >= 0.5].shape[0] / top5_rec_ious[i].shape[0]
+        # if args.eval_rand:
+        #     running_rand_acc_025iou = rand_ious[i][rand_ious[i] >= 0.25].shape[0] / rand_ious[i].shape[0]
+        #     running_rand_acc_05iou = rand_ious[i][rand_ious[i] >= 0.5].shape[0] / rand_ious[i].shape[0]
+        #     running_top5_rand_acc_025iou = top5_rand_ious[i][top5_rand_ious[i] >= 0.25].shape[0] / top5_rand_ious[i].shape[0]
+        #     running_top5_rand_acc_05iou = top5_rand_ious[i][top5_rand_ious[i] >= 0.5].shape[0] / top5_rand_ious[i].shape[0]
 
         # store
-        ref_accs.append(running_ref_acc)
         acc_025ious.append(running_acc_025iou)
         acc_05ious.append(running_acc_05iou)
+        top5_acc_025ious.append(running_top5_acc_025iou)
+        top5_acc_05ious.append(running_top5_acc_05iou)
+        if not args.is_eval:
+            rec_acc_025ious.append(running_rec_acc_025iou)
+            rec_acc_05ious.append(running_rec_acc_05iou)
+            top5_rec_acc_025ious.append(running_top5_rec_acc_025iou)
+            top5_rec_acc_05ious.append(running_top5_rec_acc_05iou)
+        # if args.eval_rand:
+        #     rand_acc_025ious.append(running_rand_acc_025iou)
+        #     rand_acc_05ious.append(running_rand_acc_05iou)
+        #     top5_rand_acc_025ious.append(running_top5_rand_acc_025iou)
+        #     top5_rand_acc_05ious.append(running_top5_rand_acc_05iou)
 
     # aggregate
     scores["overall"]["overall"] = {}
-    scores["overall"]["overall"]["ref_acc"] = np.mean(ref_accs)
     scores["overall"]["overall"]["acc@0.25iou"] = np.mean(acc_025ious)
     scores["overall"]["overall"]["acc@0.5iou"] = np.mean(acc_05ious)
+    scores["overall"]["overall"]["top5_acc@0.25iou"] = np.mean(top5_acc_025ious)
+    scores["overall"]["overall"]["top5_acc@0.5iou"] = np.mean(top5_acc_05ious)
+    if not args.is_eval:
+        scores["overall"]["overall"]["rec_acc@0.25iou"] = np.mean(rec_acc_025ious)
+        scores["overall"]["overall"]["rec_acc@0.5iou"] = np.mean(rec_acc_05ious)
+        scores["overall"]["overall"]["top5_rec_acc@0.25iou"] = np.mean(top5_rec_acc_025ious)
+        scores["overall"]["overall"]["top5_rec_acc@0.5iou"] = np.mean(top5_rec_acc_05ious)
+    # if args.eval_rand:
+    #     scores["overall"]["overall"]["rand_acc@0.25iou"] = np.mean(rand_acc_025ious)
+    #     scores["overall"]["overall"]["rand_acc@0.5iou"] = np.mean(rand_acc_05ious)
+    #     scores["overall"]["overall"]["top5_rand_acc@025iou"] = np.mean(top5_rand_acc_025ious)
+    #     scores["overall"]["overall"]["top5_rand_acc@05iou"] = np.mean(top5_rand_acc_05ious)
 
     # report
     print("\nstats:")
@@ -409,100 +543,10 @@ def eval_ref(args):
 
     print("\nlanguage classification accuracy: {}".format(np.mean(lang_acc)))
 
-def eval_det(args):
-    print("evaluate detection...")
-    # constant
-    DC = ScannetDatasetConfig()
-    
-    # init training dataset
-    print("preparing data...")
-    scanrefer, scene_list = get_scanrefer(args)
+    print("\n mean forward time: {}".format(mean_forward_time))
 
-    # dataloader
-    _, dataloader = get_dataloader(args, scanrefer, scene_list, "val", DC)
-
-    # model
-    model = get_model(args, DC)
-
-    # config
-    POST_DICT = {
-        "remove_empty_box": True, 
-        "use_3d_nms": True, 
-        "nms_iou": 0.25,
-        "use_old_type_nms": False, 
-        "cls_nms": True, 
-        "per_class_proposal": True,
-        "conf_thresh": 0.05,
-        "dataset_config": DC
-    }
-    AP_IOU_THRESHOLDS = [0.25, 0.5]
-    AP_CALCULATOR_LIST = [APCalculator(iou_thresh, DC.class2type) for iou_thresh in AP_IOU_THRESHOLDS]
-
-    sem_acc = []
-    for data in tqdm(dataloader):
-        for key in data:
-            data[key] = data[key].cuda()
-
-        # feed
-        with torch.no_grad():
-            data = model(data)
-            _, data = get_loss(
-                data_dict=data, 
-                config=DC, 
-                detection=True,
-                reference=False
-            )
-            data = get_eval(
-                data_dict=data, 
-                config=DC, 
-                reference=False,
-                post_processing=POST_DICT
-            )
-
-            sem_acc.append(data["sem_acc"].item())
-
-            batch_pred_map_cls = parse_predictions(data, POST_DICT) 
-            batch_gt_map_cls = parse_groundtruths(data, POST_DICT) 
-            for ap_calculator in AP_CALCULATOR_LIST:
-                ap_calculator.step(batch_pred_map_cls, batch_gt_map_cls)
-
-    # aggregate object detection results and report
-    print("\nobject detection sem_acc: {}".format(np.mean(sem_acc)))
-    for i, ap_calculator in enumerate(AP_CALCULATOR_LIST):
-        print()
-        print("-"*10, "iou_thresh: %f"%(AP_IOU_THRESHOLDS[i]), "-"*10)
-        metrics_dict = ap_calculator.compute_metrics()
-        for key in metrics_dict:
-            print("eval %s: %f"%(key, metrics_dict[key]))
 
 if __name__ == "__main__":
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument("--dataset", type=str, help="Choose a dataset: ScanRefer or ReferIt3D", default="ScanRefer")
-    # parser.add_argument("--folder", type=str, help="Folder containing the model")
-    # parser.add_argument("--gpu", type=str, help="gpu", default="0")
-    # parser.add_argument("--batch_size", type=int, help="batch size", default=8)
-    # parser.add_argument("--lang_num_max", type=int, help="lang num max", default=32)
-    # parser.add_argument("--num_points", type=int, default=40000, help="Point Number [default: 40000]")
-    # parser.add_argument("--num_proposals", type=int, default=256, help="Proposal number [default: 256]")
-    # parser.add_argument("--num_scenes", type=int, default=-1, help="Number of scenes [default: -1]")
-    # parser.add_argument("--force", action="store_true", help="enforce the generation of results")
-    # parser.add_argument("--seed", type=int, default=42, help="random seed")
-    # parser.add_argument("--repeat", type=int, default=1, help="Number of times for evaluation")
-    # parser.add_argument("--no_height", action="store_true", help="Do NOT use height signal in input.")
-    # parser.add_argument("--no_lang_cls", action="store_true", help="Do NOT use language classifier.")
-    # parser.add_argument("--no_nms", action="store_true", help="do NOT use non-maximum suppression for post-processing.")
-    # parser.add_argument("--use_color", action="store_true", help="Use RGB color in input.")
-    # parser.add_argument("--use_normal", action="store_true", help="Use RGB color in input.")
-    # parser.add_argument("--use_multiview", action="store_true", help="Use multiview images.")
-    # parser.add_argument("--use_bidir", action="store_true", help="Use bi-directional GRU.")
-    # parser.add_argument("--use_train", action="store_true", help="Use train split in evaluation.")
-    # parser.add_argument("--use_oracle", action="store_true", help="Use ground truth bounding boxes.")
-    # parser.add_argument("--use_cat_rand", action="store_true", help="Use randomly selected bounding boxes from correct categories as outputs.")
-    # parser.add_argument("--use_best", action="store_true", help="Use best bounding boxes as outputs.")
-    # parser.add_argument("--reference", action="store_true", help="evaluate the reference localization results")
-    # parser.add_argument("--detection", action="store_true", help="evaluate the object detection results")
-    # args = parser.parse_args()
-
     assert CONF.lang_num_max == 1, 'lang max num == 1; avoid bugs'
     # setting
     # os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu

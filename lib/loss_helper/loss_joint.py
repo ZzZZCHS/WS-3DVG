@@ -15,7 +15,7 @@ from .loss_captioning import compute_cap_loss
 from .loss_grounding import compute_reference_loss, compute_lang_classification_loss
 from .loss_reconstruct import reconstruct_loss, weakly_supervised_loss, reconstruct_score
 from .loss_contra import contra_loss
-from .mil_nce import MILNCELoss
+from .mil import MILNCELoss, MILMARGINLoss
 
 FAR_THRESHOLD = 0.3
 NEAR_THRESHOLD = 0.3
@@ -46,6 +46,7 @@ def get_joint_loss(data_dict, config, is_eval=False):
     data_dict["neg_ratio"] = torch.sum(objectness_mask.float())/float(total_num_proposal) - data_dict["pos_ratio"]
 
     lang_num = data_dict["lang_num"]
+    # print(lang_num.float().mean())
     bs, len_num_max = data_dict["ground_lang_feat_list"].shape[:2]
     len_num_mask = torch.ones(bs, len_num_max).to(data_dict["all_masks_list"].device)
     for i in range(bs):
@@ -59,12 +60,12 @@ def get_joint_loss(data_dict, config, is_eval=False):
         # ori_feat = data_dict["ground_lang_feat_list"]
         masks_list = data_dict["all_masks_list"]
         # masks_list = data_dict["rand_masks_list"]
-        target_obj_scores = data_dict["target_scores"]
+        target_ids = data_dict["target_ids"].flatten(0, 1)
         all_scores = data_dict["cluster_ref"]
         # target_ids = data_dict["target_ids"].resize(*target_obj_scores.shape)
         # print(rec_word_logits.shape, gt_idx.shape, masks_list.shape, target_obj_scores.shape)
-        num_target = target_obj_scores.shape[1]
-        rec_score = torch.zeros_like(target_obj_scores).to(target_obj_scores.device)
+        num_target = target_ids.shape[1]
+        rec_score = torch.zeros(target_ids.shape).to(target_ids.device)
         # zeros = torch.zeros_like(target_ids).to(target_ids.device).float()
         # all_scores = all_scores.softmax(dim=-1)
         # all_scores = all_scores.scatter(dim=1, src=zeros, index=target_ids)
@@ -86,7 +87,10 @@ def get_joint_loss(data_dict, config, is_eval=False):
     # data_dict["contra_loss"] = contra_loss(data_dict)
     # if torch.isnan(data_dict["contra_loss"]):
     #     print(data_dict["contra_loss"])
-    data_dict["nce_loss"] = MILNCELoss(data_dict, len_num_mask)
+    if CONF.mil_type == "nce":
+        data_dict["nce_loss"] = MILNCELoss(data_dict, len_num_mask)
+    else:
+        data_dict["nce_loss"] = MILMARGINLoss(data_dict, len_num_mask)
 
     # Final loss function
     loss = torch.zeros(1)[0].cuda()
@@ -95,9 +99,10 @@ def get_joint_loss(data_dict, config, is_eval=False):
             loss += 2 * data_dict["nce_loss"]
         if not CONF.no_text:
             loss += 2 * data_dict["lang_loss"]
-        if not CONF.no_recon:
+        if not CONF.no_recon and data_dict["epoch"] >= 1:
             loss += data_dict["rec_loss"]
-        loss += data_dict["weak_loss"]
+        if not CONF.no_distill and data_dict["epoch"] >= 2:
+            loss += data_dict["weak_loss"]
     # if use_lang_classifier:
     #     loss += data_dict["lang_loss"]
 

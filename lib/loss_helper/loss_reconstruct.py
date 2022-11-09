@@ -110,8 +110,10 @@ def weakly_supervised_loss(rec_score, all_score, data_dict, len_num_mask, args):
     if args.no_recon:
         rewards = torch.ones(n_candidate).to(candidate_score.device)
     else:
+        # rewards = torch.zeros(n_candidate).to(candidate_score.device)
+        # rewards[-1] = 1.
         rewards = torch.linspace(0.1, 1, n_candidate).to(candidate_score.device)
-        rewards = rewards**2
+        # rewards = rewards**2
         idx = torch.argsort(rec_score, dim=-1, descending=True)
         _, idx = torch.sort(idx, dim=-1)
         rewards = rewards[idx]

@@ -39,7 +39,6 @@ class MatchModule(nn.Module):
 
         batch_size, num_proposal = features.shape[:2]
         len_num_max = data_dict["lang_feat_list"].shape[1]
-        target_ids = data_dict["target_ids"].resize(batch_size*len_num_max, self.num_target)
 
         feature1 = features[:, None, :, :].repeat(1, len_num_max, 1, 1).reshape(batch_size*len_num_max, num_proposal, -1)
         lang_fea = data_dict["lang_fea"]
@@ -52,8 +51,28 @@ class MatchModule(nn.Module):
 
         confidence1 = self.match(feature1_agg).squeeze(1)  # batch_size*len_num_max, num_proposal
         data_dict["cluster_ref"] = confidence1
-        data_dict["target_scores"] = torch.gather(confidence1, 1, target_ids)
+
+        # target_ids = data_dict["target_ids"].resize(batch_size*len_num_max, self.num_target)
+        # data_dict["target_scores"] = torch.gather(confidence1, 1, target_ids)
 
         return data_dict
 
+    def get_ref_score(self, data_dict):
+        self.eval()
+        features = data_dict["bbox_feature"]  # batch_size, num_proposals, feat_size
 
+        batch_size, num_proposal = features.shape[:2]
+        len_num_max = data_dict["lang_feat_list"].shape[1]
+        feature1 = features[:, None, :, :].repeat(1, len_num_max, 1, 1).reshape(batch_size * len_num_max, num_proposal,
+                                                                                -1)
+        lang_fea = data_dict["lang_fea"]
+        # cross-attention
+        feature1 = self.grounding_cross_attn(feature1, lang_fea, lang_fea, data_dict["attention_mask"])
+
+        # match
+        feature1_agg = feature1
+        feature1_agg = feature1_agg.permute(0, 2, 1).contiguous()
+
+        confidence1 = self.match(feature1_agg).squeeze(1)
+        self.train()
+        return confidence1.softmax(-1)
