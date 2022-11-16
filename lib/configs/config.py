@@ -12,7 +12,7 @@ class Config():
         self.parser = argparse.ArgumentParser()
         self.parser.add_argument("--config", type=str, default="config/groupfree.yaml", help="path to config file")
         self.parser.add_argument("--tag", type=str, help="tag for the training, e.g. cuda_wl", default="")
-        self.parser.add_argument("--dataset", type=str, help="Choose a dataset: ScanRefer, nr3d or sr3d", default="nr3d")
+        self.parser.add_argument("--dataset", type=str, help="Choose a dataset: ScanRefer, nr3d or sr3d", default="ScanRefer")
         self.parser.add_argument("--gpu", type=str, help="gpu", default="0")
         self.parser.add_argument("--seed", type=int, default=3407, help="random seed")
         self.parser.add_argument("--force", action="store_true", help="enforce the generation of results")
@@ -93,6 +93,8 @@ class Config():
         self.parser.add_argument("--pretrain_model", type=str, default="groupfree", help="pretrained model")
         self.parser.add_argument("--pretrain_model_on", action="store_true", default=True, help="pretrained model on")
 
+        self.parser.add_argument("--pref", type=str, default="pred")
+
         self.parser.add_argument("--debug", action="store_true", help="Debug mode.")
 
     def get_config(self):
@@ -131,7 +133,7 @@ class Config():
         # CONF.PATH.SCAN2CAD = os.path.join(CONF.PATH.DATA, "Scan2CAD_dataset") # TODO change this
 
         # data
-        CONF.SCANNET_DIR =  CONF.PATH.DATA + "/scannet/scans" # TODO change this
+        CONF.SCANNET_DIR = CONF.PATH.DATA + "/scannet/scans" # TODO change this
         CONF.SCANNET_FRAMES_ROOT = CONF.PATH.DATA + "/scanrefer/frames_square/" # TODO change this
         CONF.PROJECTION = CONF.PATH.DATA + "/multiview_projection_scanrefer" # TODO change this
         CONF.ENET_FEATURES_ROOT = CONF.PATH.DATA + "/scanrefer/enet_features" # TODO change this

@@ -21,18 +21,16 @@ from utils.box_util import get_3d_box, box3d_iou
 from models.jointnet.jointnet import JointNet
 from data.scannet.model_util_scannet import ScannetDatasetConfig
 from lib.joint.dataset import ScannetReferenceDataset
-from lib.joint.solver import Solver
+from lib.joint.solver_3djcg import Solver
 from lib.ap_helper.ap_helper_fcos import APCalculator, parse_predictions, parse_groundtruths
 from lib.loss_helper.loss_joint import get_joint_loss
-from lib.configs.config_joint import CONF
+from lib.configs.config import CONF
 
 # data
-#SCANNET_ROOT = "/mnt/canis/Datasets/ScanNet/public/v2/scans/" # TODO point this to your scannet data
-#SCANNET_ROOT = "/data4/caidaigang/caidaigang/model/scanrefer/data/scannet/scans/"  #29
-SCANNET_ROOT = "/data5/caidaigang/scanrefer/data/scannet/scans/"  #30
+SCANNET_ROOT = CONF.SCANNET_DIR
 SCANNET_MESH = os.path.join(SCANNET_ROOT, "{}/{}_vh_clean_2.ply") # scene_id, scene_id
 SCANNET_META = os.path.join(SCANNET_ROOT, "{}/{}.txt") # scene_id, scene_id 
-SCANREFER_TRAIN = json.load(open(os.path.join(CONF.PATH.DATA, "ScanRefer_filtered_train.json")))
+SCANREFER_TRAIN = json.load(open(os.path.join(CONF.PATH.DATA, "Masked_ScanRefer_filtered_train.json")))
 SCANREFER_VAL = json.load(open(os.path.join(CONF.PATH.DATA, "ScanRefer_filtered_val.json")))
 
 # constants
@@ -61,20 +59,28 @@ def get_dataloader(args, scanrefer, scanrefer_new, all_scene_list, split, config
 
 def get_model(args, DC, dataset):
     # load model
-    input_channels = int(args.use_multiview) * 128 + int(args.use_normal) * 3 + int(args.use_color) * 3 + int(not args.no_height)
+    input_channels = int(not args.no_height) + int(args.use_color) * 3
     model = JointNet(
-        num_class=DC.num_class,
+        # num_class=DC.num_class,
         vocabulary=dataset.vocabulary,
-        embeddings=dataset.glove,
-        num_heading_bin=DC.num_heading_bin,
-        num_size_cluster=DC.num_size_cluster,
-        mean_size_arr=DC.mean_size_arr,
+        # embeddings=dataset.glove,
+        # num_heading_bin=DC.num_heading_bin,
+        # num_size_cluster=DC.num_size_cluster,
+        # mean_size_arr=DC.mean_size_arr,
         input_feature_dim=input_channels,
+        width=args.width,
+        hidden_size=args.hidden_size,
         num_proposal=args.num_proposals,
-        no_caption=True,
-        use_topdown=False,
-        use_lang_classifier=True,
-        dataset_config=DC
+        num_target=args.num_target,
+        no_caption=args.no_caption,
+        use_topdown=args.use_topdown,
+        num_locals=args.num_locals,
+        query_mode=args.query_mode,
+        use_lang_classifier=(not args.no_lang_cls),
+        use_bidir=args.use_bidir,
+        no_reference=args.no_reference,
+        dataset_config=DC,
+        args=args
     ).cuda()
 
     path = os.path.join(CONF.PATH.OUTPUT, args.folder, "model.pth")
@@ -86,11 +92,11 @@ def get_model(args, DC, dataset):
 def get_scanrefer(args):
     scanrefer = SCANREFER_TRAIN if args.use_train else SCANREFER_VAL
     all_scene_list = sorted(list(set([data["scene_id"] for data in scanrefer])))
-    if args.scene_id:
-        assert args.scene_id in all_scene_list, "The scene_id is not found"
-        scene_list = [args.scene_id]
-    else:
-        scene_list = sorted(list(set([data["scene_id"] for data in scanrefer])))
+    # if args.scene_id:
+    #     assert args.scene_id in all_scene_list, "The scene_id is not found"
+    #     scene_list = [args.scene_id]
+    # else:
+    scene_list = sorted(list(set([data["scene_id"] for data in scanrefer])))
 
     scanrefer = [data for data in scanrefer if data["scene_id"] in scene_list]
 
@@ -371,7 +377,10 @@ def dump_results(args, scanrefer, data, config):
     pred_center = data['pred_center'].detach().cpu().numpy() # (B, num_proposal)
     pred_box_size = data['pred_size'].detach().cpu().numpy() # (B, num_proposal, 3)
     # reference
-    pred_ref_scores = data["cluster_ref"].detach().cpu().numpy()
+    pred_masks = (data['objectness_pred'] == 1).float()
+    masked_pred = data["cluster_ref"] * pred_masks
+    pred_ref_scores = masked_pred.detach().cpu().numpy()
+    pred_ref_top5 = torch.topk(masked_pred, k=args.topk, dim=1)[1].detach().cpu().numpy()  # (B, k)
     #pred_ref_scores_softmax = F.softmax(data["cluster_ref"] * torch.argmax(data['objectness_scores'], 2).float() * data['pred_mask'], dim=1).detach().cpu().numpy()
     pred_ref_scores_softmax = F.softmax(data["cluster_ref"], dim=1).detach().cpu().numpy()
     # post-processing
@@ -426,26 +435,38 @@ def dump_results(args, scanrefer, data, config):
         #pred_masks = nms_masks[i] * pred_objectness[i] == 1
         assert pred_ref_scores[i].shape[0] == pred_center[i].shape[0]
         #pred_ref_idx = np.argmax(pred_ref_scores[i] * pred_masks, 0)
-        pred_ref_idx = np.argmax(pred_ref_scores[i], 0)
+        # pred_ref_idx = np.argmax(pred_ref_scores[i], 0)
         #assigned_gt = torch.gather(data["ref_box_label"], 1, data["object_assignment"]).detach().cpu().numpy()
+        iou = -1
+        for idx in pred_ref_top5[i]:
+            pred_center_ = pred_center[i, idx]
+            pred_heading_ = pred_heading[i, idx]
+            pred_box_size_ = pred_box_size[i, idx]
+            pred_box = get_3d_box(pred_box_size_, pred_heading_, pred_center_)
+            iou_ = box3d_iou(gt_bbox, pred_box)
+            if iou_ > iou:
+                iou = iou_
+                pred_ref_idx = idx
+                pred_center_i = pred_center_
+                pred_box_size_i = pred_box_size_
 
         # visualize the predicted reference box
-        pred_center_i = pred_center[i, pred_ref_idx]
-        pred_heading_i = pred_heading[i, pred_ref_idx]
-        pred_box_size_i = pred_box_size[i, pred_ref_idx]
+        # pred_center_i = pred_center[i, pred_ref_idx]
+        # pred_heading_i = pred_heading[i, pred_ref_idx]
+        # pred_box_size_i = pred_box_size[i, pred_ref_idx]
         #pred_obb = data["pred_bbox_corner"][i, pred_ref_idx]
         #print("pred_center", pred_center_i.shape, pred_center_i)
         #print("pred_heading", pred_heading_i.shape)
         #print("pred_box_size", pred_box_size_i.shape)
         #print("pred_obb", pred_obb.shape)
-        pred_bbox = get_3d_box(pred_box_size_i, pred_heading_i, pred_center_i)
+        # pred_bbox = get_3d_box(pred_box_size_i, pred_heading_i, pred_center_i)
         #print("pred_bbox", pred_bbox.shape)
-        iou = box3d_iou(gt_bbox, pred_bbox)
+        # iou = box3d_iou(gt_bbox, pred_bbox)
         #print("iou", iou)
         pred_obb = np.zeros(6)
         pred_obb[0:3] = pred_center_i
         pred_obb[3:6] = pred_box_size_i
-        write_bbox(pred_obb, 1, os.path.join(scene_dump_dir, 'pred_{}_{}_{}_{:.5f}_{:.5f}.ply'.format(object_id, object_name, ann_id, pred_ref_scores_softmax[i, pred_ref_idx], iou)))
+        write_bbox(pred_obb, 1, os.path.join(scene_dump_dir, args.pref+'_{}_{}_{}_{:.5f}_{:.5f}.ply'.format(object_id, object_name, ann_id, pred_ref_scores_softmax[i, pred_ref_idx], iou)))
 
 def visualize(args):
     # init training dataset
@@ -459,16 +480,16 @@ def visualize(args):
     model = get_model(args, DC, dataset)
 
     # config
-    POST_DICT = {
-        'remove_empty_box': True, 
-        'use_3d_nms': True, 
-        'nms_iou': 0.25,
-        'use_old_type_nms': False, 
-        'cls_nms': True, 
-        'per_class_proposal': True,
-        'conf_thresh': 0.05,
-        'dataset_config': DC
-    } if not args.no_nms else None
+    # POST_DICT = {
+    #     'remove_empty_box': True,
+    #     'use_3d_nms': True,
+    #     'nms_iou': 0.25,
+    #     'use_old_type_nms': False,
+    #     'cls_nms': True,
+    #     'per_class_proposal': True,
+    #     'conf_thresh': 0.05,
+    #     'dataset_config': DC
+    # } if not args.no_nms else None
     
     # evaluate
     print("visualizing...")
@@ -478,20 +499,13 @@ def visualize(args):
 
         # feed
         data["epoch"] = 0
-        data = model(data)
+        data = model(data, is_eval=args.is_eval)
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         #_, data = get_joint_loss(data, device, DC, True, True, POST_DICT)
         data = get_joint_loss(
             data_dict=data,
-            device=device,
             config=DC,
-            weights=0,
-            detection=True,
-            caption=False,
-            reference=True,
-            use_lang_classifier=True,
-            orientation=False,
-            distance=False,
+            is_eval=args.is_eval
         )
         
         # visualize
@@ -501,25 +515,25 @@ def visualize(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", type=str, help="Choose a dataset: ScanRefer or ReferIt3D", default="ScanRefer")
-    parser.add_argument("--folder", type=str, help="Folder containing the model", required=True)
-    parser.add_argument("--gpu", type=str, help="gpu", default="0")
-    parser.add_argument("--scene_id", type=str, help="scene id", default="")
-    parser.add_argument("--batch_size", type=int, help="batch size", default=8)
-    parser.add_argument('--num_points', type=int, default=40000, help='Point Number [default: 40000]')
-    parser.add_argument('--num_proposals', type=int, default=256, help='Proposal number [default: 256]')
-    parser.add_argument('--num_scenes', type=int, default=-1, help='Number of scenes [default: -1]')
-    parser.add_argument('--no_height', action='store_true', help='Do NOT use height signal in input.')
-    parser.add_argument('--no_nms', action='store_true', help='do NOT use non-maximum suppression for post-processing.')
-    parser.add_argument('--use_train', action='store_true', help='Use the training set.')
-    parser.add_argument('--use_color', action='store_true', help='Use RGB color in input.')
-    parser.add_argument('--use_normal', action='store_true', help='Use RGB color in input.')
-    parser.add_argument('--use_multiview', action='store_true', help='Use multiview images.')
-    args = parser.parse_args()
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument("--dataset", type=str, help="Choose a dataset: ScanRefer or ReferIt3D", default="ScanRefer")
+    # parser.add_argument("--folder", type=str, help="Folder containing the model", required=True)
+    # parser.add_argument("--gpu", type=str, help="gpu", default="0")
+    # parser.add_argument("--scene_id", type=str, help="scene id", default="")
+    # parser.add_argument("--batch_size", type=int, help="batch size", default=8)
+    # parser.add_argument('--num_points', type=int, default=40000, help='Point Number [default: 40000]')
+    # parser.add_argument('--num_proposals', type=int, default=256, help='Proposal number [default: 256]')
+    # parser.add_argument('--num_scenes', type=int, default=-1, help='Number of scenes [default: -1]')
+    # parser.add_argument('--no_height', action='store_true', help='Do NOT use height signal in input.')
+    # parser.add_argument('--no_nms', action='store_true', help='do NOT use non-maximum suppression for post-processing.')
+    # parser.add_argument('--use_train', action='store_true', help='Use the training set.')
+    # parser.add_argument('--use_color', action='store_true', help='Use RGB color in input.')
+    # parser.add_argument('--use_normal', action='store_true', help='Use RGB color in input.')
+    # parser.add_argument('--use_multiview', action='store_true', help='Use multiview images.')
+    # args = parser.parse_args()
 
     # setting
     # os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
-    visualize(args)
+    visualize(CONF)
