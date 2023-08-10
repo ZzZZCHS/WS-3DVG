@@ -99,9 +99,9 @@ def get_joint_loss(data_dict, config, is_eval=False):
             loss += 2 * data_dict["nce_loss"]
         if not CONF.no_text:
             loss += 2 * data_dict["lang_loss"]
-        if not CONF.no_recon and data_dict["epoch"] >= 1:
+        if not CONF.no_recon and data_dict["epoch"] >= 0:
             loss += data_dict["rec_loss"]
-        if not CONF.no_distill and data_dict["epoch"] >= 2:
+        if not CONF.no_distill and data_dict["epoch"] >= 0:
             loss += data_dict["weak_loss"]
     # if use_lang_classifier:
     #     loss += data_dict["lang_loss"]

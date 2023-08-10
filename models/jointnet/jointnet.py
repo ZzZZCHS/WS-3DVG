@@ -119,25 +119,25 @@ class JointNet(nn.Module):
         """
 
         # # hough voting
-        # with record_function("pretrain model"):
-        if self.args.pretrain_model_on:
-            if self.args.pretrain_model == "votenet":
-                data_dict = self.backbone_net(data_dict)
-                xyz = data_dict["fp2_xyz"]
-                features = data_dict["fp2_features"]
-                data_dict["seed_inds"] = data_dict["fp2_inds"]
-                data_dict["seed_xyz"] = xyz
-                data_dict["seed_features"] = features
-                xyz, features = self.vgen(xyz, features)
-                features_norm = torch.norm(features, p=2, dim=1)
-                features = features.div(features_norm.unsqueeze(1))
-                data_dict["vote_xyz"] = xyz
-                data_dict["vote_features"] = features
-                # proposal generation
-                data_dict = self.pnet(xyz, features, data_dict)
-            if self.args.pretrain_model == "groupfree":
-                data_dict = self.group_free(data_dict)
-            # return data_dict
+        with record_function("pretrain model"):
+            if self.args.pretrain_model_on:
+                if self.args.pretrain_model == "votenet":
+                    data_dict = self.backbone_net(data_dict)
+                    xyz = data_dict["fp2_xyz"]
+                    features = data_dict["fp2_features"]
+                    data_dict["seed_inds"] = data_dict["fp2_inds"]
+                    data_dict["seed_xyz"] = xyz
+                    data_dict["seed_features"] = features
+                    xyz, features = self.vgen(xyz, features)
+                    features_norm = torch.norm(features, p=2, dim=1)
+                    features = features.div(features_norm.unsqueeze(1))
+                    data_dict["vote_xyz"] = xyz
+                    data_dict["vote_features"] = features
+                    # proposal generation
+                    data_dict = self.pnet(xyz, features, data_dict)
+                if self.args.pretrain_model == "groupfree":
+                    data_dict = self.group_free(data_dict)
+                # return data_dict
 
         # text encode
         data_dict = self.lang(data_dict)
@@ -145,13 +145,13 @@ class JointNet(nn.Module):
         data_dict = self.relation(data_dict)
 
         # data_dict = self.contranet(data_dict)
-
         data_dict = self.match(data_dict)
 
         self.divide_proposals(data_dict)
         # reconstruction
-        if not is_eval:
-            self.reconstruct(data_dict)
+        with record_function("reconstruct"):
+            if not is_eval:
+                self.reconstruct(data_dict)
 
         return data_dict
 
@@ -202,6 +202,9 @@ class JointNet(nn.Module):
         weights.masked_fill_(non_objectness_masks, -float('inf'))
         # pred_by_target_cls.masked_fill_(non_objectness_masks, -float('inf'))
         # att_weight.masked_fill_(non_objectness_masks, 0.)
+        # data_dict["nms_mask"] = self.get_nms_masks(data_dict, len_num_max)
+        # # print(data_dict["nms_mask"].shape)
+        # weights.masked_fill_(data_dict["nms_mask"] == 0, -float('inf'))
 
         sorted_ids = torch.sort(weights, descending=True, dim=1)[1]
         target_ids = sorted_ids[:, :self.num_target]

@@ -92,11 +92,11 @@ def get_model(args, DC, dataset):
 def get_scanrefer(args):
     scanrefer = SCANREFER_TRAIN if args.use_train else SCANREFER_VAL
     all_scene_list = sorted(list(set([data["scene_id"] for data in scanrefer])))
-    # if args.scene_id:
-    #     assert args.scene_id in all_scene_list, "The scene_id is not found"
-    #     scene_list = [args.scene_id]
-    # else:
-    scene_list = sorted(list(set([data["scene_id"] for data in scanrefer])))
+    if args.scene_id:
+        assert args.scene_id in all_scene_list, "The scene_id is not found"
+        scene_list = [args.scene_id]
+    else:
+        scene_list = sorted(list(set([data["scene_id"] for data in scanrefer])))
 
     scanrefer = [data for data in scanrefer if data["scene_id"] in scene_list]
 
@@ -377,8 +377,24 @@ def dump_results(args, scanrefer, data, config):
     pred_center = data['pred_center'].detach().cpu().numpy() # (B, num_proposal)
     pred_box_size = data['pred_size'].detach().cpu().numpy() # (B, num_proposal, 3)
     # reference
-    pred_masks = (data['objectness_pred'] == 1).float()
-    masked_pred = data["cluster_ref"] * pred_masks
+    # POST_DICT = {
+    #     'remove_empty_box': True,
+    #     'use_3d_nms': True,
+    #     'nms_iou': 0.25,
+    #     'use_old_type_nms': False,
+    #     'cls_nms': True,
+    #     'per_class_proposal': True,
+    #     'conf_thresh': 0.05,
+    #     'dataset_config': DC
+    # }
+    # _ = parse_predictions(data, POST_DICT)
+    # nms_masks = torch.LongTensor(data['pred_mask']).cuda()
+
+    pred_masks = (data['nms_mask'] * data['objectness_pred'] == 1).float()
+    if not args.no_distill:
+        masked_pred = data["cluster_ref"] * pred_masks
+    else:
+        masked_pred = data["coarse_weights"] * pred_masks
     pred_ref_scores = masked_pred.detach().cpu().numpy()
     pred_ref_top5 = torch.topk(masked_pred, k=args.topk, dim=1)[1].detach().cpu().numpy()  # (B, k)
     #pred_ref_scores_softmax = F.softmax(data["cluster_ref"] * torch.argmax(data['objectness_scores'], 2).float() * data['pred_mask'], dim=1).detach().cpu().numpy()
@@ -403,7 +419,9 @@ def dump_results(args, scanrefer, data, config):
         object_id = scanrefer[idx]["object_id"]
         object_name = scanrefer[idx]["object_name"]
         ann_id = scanrefer[idx]["ann_id"]
-    
+        if object_id != args.object_id or ann_id != args.ann_id:
+            continue
+        print(object_id, ann_id, args.pref)
         # scene_output
         scene_dump_dir = os.path.join(dump_dir, scene_id)
         if not os.path.exists(scene_dump_dir):
@@ -437,36 +455,48 @@ def dump_results(args, scanrefer, data, config):
         #pred_ref_idx = np.argmax(pred_ref_scores[i] * pred_masks, 0)
         # pred_ref_idx = np.argmax(pred_ref_scores[i], 0)
         #assigned_gt = torch.gather(data["ref_box_label"], 1, data["object_assignment"]).detach().cpu().numpy()
-        iou = -1
-        for idx in pred_ref_top5[i]:
-            pred_center_ = pred_center[i, idx]
-            pred_heading_ = pred_heading[i, idx]
-            pred_box_size_ = pred_box_size[i, idx]
-            pred_box = get_3d_box(pred_box_size_, pred_heading_, pred_center_)
-            iou_ = box3d_iou(gt_bbox, pred_box)
-            if iou_ > iou:
-                iou = iou_
-                pred_ref_idx = idx
-                pred_center_i = pred_center_
-                pred_box_size_i = pred_box_size_
+        if args.pref == "pred":
+            iou = -1
+            for idx in pred_ref_top5[i]:
+                pred_center_ = pred_center[i, idx]
+                pred_heading_ = pred_heading[i, idx]
+                pred_box_size_ = pred_box_size[i, idx]
+                pred_box = get_3d_box(pred_box_size_, pred_heading_, pred_center_)
+                iou_ = box3d_iou(gt_bbox, pred_box)
+                if iou_ > iou:
+                    iou = iou_
+                    pred_ref_idx = idx
+                    pred_center_i = pred_center_
+                    pred_box_size_i = pred_box_size_
+            pred_obb = np.zeros(6)
+            pred_obb[0:3] = pred_center_i
+            pred_obb[3:6] = pred_box_size_i
+            write_bbox(pred_obb, 1, os.path.join(scene_dump_dir, args.pref+'_{}_{}_{}_{:.5f}_{:.5f}.ply'.format(object_id, object_name, ann_id, pred_ref_scores_softmax[i, pred_ref_idx], iou)))
+        else:
+            if args.pref == "proposal":
+                for idx in range(args.num_proposals):
+                    # print(idx, pred_ref_scores[i][idx])
+                    if data["nms_mask"][i][idx] == 1:
+                        pred_center_ = pred_center[i, idx]
+                        pred_box_size_ = pred_box_size[i, idx]
+                        pred_obb = np.zeros(6)
+                        pred_obb[0:3] = pred_center_
+                        pred_obb[3:6] = pred_box_size_
+                        write_bbox(pred_obb, 1, os.path.join(scene_dump_dir,
+                                                             args.pref + '_{}_{}_{}.ply'.format(object_id, ann_id, idx)))
+            if args.pref == "candidate":
+                for j in range(args.num_target):
+                    idx = data["target_ids"][i][0][j]
+                    pred_center_ = pred_center[i, idx]
+                    pred_box_size_ = pred_box_size[i, idx]
+                    pred_obb = np.zeros(6)
+                    pred_obb[0:3] = pred_center_
+                    pred_obb[3:6] = pred_box_size_
+                    write_bbox(pred_obb, 1, os.path.join(scene_dump_dir,
+                                                         args.pref + '_{}_{}_{}.ply'.format(object_id, ann_id,
+                                                                                                idx)))
 
-        # visualize the predicted reference box
-        # pred_center_i = pred_center[i, pred_ref_idx]
-        # pred_heading_i = pred_heading[i, pred_ref_idx]
-        # pred_box_size_i = pred_box_size[i, pred_ref_idx]
-        #pred_obb = data["pred_bbox_corner"][i, pred_ref_idx]
-        #print("pred_center", pred_center_i.shape, pred_center_i)
-        #print("pred_heading", pred_heading_i.shape)
-        #print("pred_box_size", pred_box_size_i.shape)
-        #print("pred_obb", pred_obb.shape)
-        # pred_bbox = get_3d_box(pred_box_size_i, pred_heading_i, pred_center_i)
-        #print("pred_bbox", pred_bbox.shape)
-        # iou = box3d_iou(gt_bbox, pred_bbox)
-        #print("iou", iou)
-        pred_obb = np.zeros(6)
-        pred_obb[0:3] = pred_center_i
-        pred_obb[3:6] = pred_box_size_i
-        write_bbox(pred_obb, 1, os.path.join(scene_dump_dir, args.pref+'_{}_{}_{}_{:.5f}_{:.5f}.ply'.format(object_id, object_name, ann_id, pred_ref_scores_softmax[i, pred_ref_idx], iou)))
+
 
 def visualize(args):
     # init training dataset

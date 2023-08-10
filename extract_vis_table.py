@@ -57,6 +57,7 @@ for item in scannet_val:
     if ann_id not in data[scene_id][object_id]:
         data[scene_id][object_id][ann_id] = {}
         data[scene_id][object_id][ann_id]["ious"] = []
+        data[scene_id][object_id][ann_id]["files"] = []
         data[scene_id][object_id][ann_id]["object_name"] = object_name
         data[scene_id][object_id][ann_id]["ann"] = ann
 
@@ -64,44 +65,61 @@ all_sem_labels = {scene_id: np.array(all_sem_labels[scene_id]) for scene_id in a
 
 for folder in folders:
     for scene_id in os.listdir(folder):
+        if "gt_files" not in data[scene_id]:
+            data[scene_id]["gt_files"] = []
+            for file in os.listdir(os.path.join(folder, scene_id)):
+                if file[:2] == "gt":
+                    data[scene_id]["gt_files"].append(file)
         for file in os.listdir(os.path.join(folder, scene_id)):
             if file[:4] == "pred":
                 tmp = file.split("_")
                 object_id = tmp[1]
-                # object_name = tmp[2] if len(tmp) == 6 else " ".join(tmp[2:4])
+                object_name = tmp[2] if len(tmp) == 6 else "_".join(tmp[2:4])
                 ann_id = tmp[-3]
                 iou = float(tmp[-1][:-4])
                 # print(scene_id, object_id, ann_id, object_name, iou)
                 data[scene_id][object_id][ann_id]["ious"].append(iou)
+                data[scene_id][object_id][ann_id]["files"].append(file)
+                # if "gt_file" not in data[scene_id][object_id][ann_id]:
+                #     gt_file = "gt_{}_{}.ply".format(object_id, object_name)
+                #     data[scene_id][object_id][ann_id]["gt_file"] = gt_file
 
-labels = ["scene_id", "object_id", "ann_id", "object_name", "annotation", "unique"]
+labels = ["scene_id", "object_id", "ann_id", "object_name", "annotation", "same_count"]
 for name in model_names:
     labels.append(name)
+for i in range(len(model_names)):
+    labels.append("file" + str(i+1))
+labels.append("gt_file")
 
 outputs = [labels, ]
 
 for scene_id, scene_data in data.items():
     for object_id, object_data in scene_data.items():
-        for ann_id, ann_data in object_data.items():
-            object_name = ann_data["object_name"]
-            item = [scene_id, object_id, ann_id, object_name, ann_data["ann"]]
-            ious = ann_data["ious"]
-            flag = 1
-            for i in range(len(ious) - 1):
-                if ious[i] < ious[i + 1]:
-                    flag = 0
-                # if ious[i+1] > 0 and ious[i] / ious[i+1] < 1.2:
-                #     flag = 0
-            if not flag:
-                continue
-            try:
-                sem_label = raw2label[object_name]
-            except KeyError:
-                sem_label = 17
-            unique = 1 if (all_sem_labels[scene_id] == sem_label).sum() == 1 else 0
-            item.append(unique)
-            item.extend(ann_data["ious"])
-            outputs.append(item)
+        if object_id != "gt_files":
+            for ann_id, ann_data in object_data.items():
+                object_name = ann_data["object_name"]
+                item = [scene_id, object_id, ann_id, object_name, ann_data["ann"]]
+                ious = ann_data["ious"]
+                flag = 1
+                for i in range(len(ious) - 1):
+                    if ious[i] < ious[i + 1]:
+                        flag = 0
+                    # if ious[i+1] > 0 and ious[i] / ious[i+1] < 1.2:
+                    #     flag = 0
+                if not flag:
+                    continue
+                try:
+                    sem_label = raw2label[object_name]
+                except KeyError:
+                    sem_label = 17
+                # unique = 1 if (all_sem_labels[scene_id] == sem_label).sum() == 1 else 0
+                unique = (all_sem_labels[scene_id] == sem_label).sum()
+                item.append(unique)
+                item.extend(ann_data["ious"])
+                item.extend(ann_data["files"])
+                # item.append(ann_data["gt_file"])
+                item.append(scene_data["gt_files"])
+                outputs.append(item)
 print(len(outputs) - 1)
 
 output_dir = "vis_table.csv"

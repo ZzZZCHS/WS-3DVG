@@ -28,18 +28,18 @@ class Config():
         self.parser.add_argument("--mil_type", type=str, default="nce", help="mil type (nce or margin)")
         self.parser.add_argument("--topk", type=int, default=3, help="k")
 
-        self.parser.add_argument("--batch_size", type=int, help="batch size", default=12)
+        self.parser.add_argument("--batch_size", type=int, help="batch size", default=4)
         self.parser.add_argument("--val_batch_size", type=int, help="val batch size", default=1)
-        self.parser.add_argument("--epoch", type=int, help="number of epochs", default=20)
+        self.parser.add_argument("--epoch", type=int, help="number of epochs", default=15)
         self.parser.add_argument("--verbose", type=int, help="iterations of showing verbose", default=50)
-        self.parser.add_argument("--val_step", type=int, help="iterations of validating", default=500)
-        self.parser.add_argument("--lr", type=float, help="learning rate", default=1e-3)
+        self.parser.add_argument("--val_step", type=int, help="iterations of validating", default=300)
+        self.parser.add_argument("--lr", type=float, help="learning rate", default=1e-3) # 12 * 1e-3
         self.parser.add_argument("--wd", type=float, help="weight decay", default=5e-4)
         self.parser.add_argument("--amsgrad", action='store_true', help="optimizer with amsgrad")
 
-        # self.parser.add_argument("--hidden_size", type=int, help="hidden size", default=288)
+        self.parser.add_argument("--hidden_size", type=int, help="hidden size", default=288)
         self.parser.add_argument("--lang_num_max", type=int, help="lang num max", default=8)
-        # self.parser.add_argument("--num_points", type=int, default=50000, help="Point Number [default: 40000]")
+        self.parser.add_argument("--num_points", type=int, default=50000, help="Point Number [default: 40000]")
         self.parser.add_argument("--num_proposals", type=int, default=256, help="Proposal number [default: 256]")
         self.parser.add_argument("--num_target", type=int, default=8, help="Target proposal number [default: 8]")
         self.parser.add_argument("--num_locals", type=int, default=20, help="Number of local objects [default: -1]")
@@ -64,7 +64,7 @@ class Config():
                             help="Mode for aggregating features, [choices: add, mean, max]")
 
         self.parser.add_argument("--coslr", action='store_true', help="cosine learning rate")
-        # self.parser.add_argument("--no_height", action="store_true", default=True, help="Do NOT use height signal in input.")
+        self.parser.add_argument("--no_height", action="store_true", default=True, help="Do NOT use height signal in input.")
         self.parser.add_argument("--no_augment", action="store_true", default=True,
                             help="Do NOT use height signal in input.")
         self.parser.add_argument("--no_detection", action="store_true", default=True,
@@ -94,6 +94,9 @@ class Config():
         self.parser.add_argument("--pretrain_model_on", action="store_true", default=True, help="pretrained model on")
 
         self.parser.add_argument("--pref", type=str, default="pred")
+        self.parser.add_argument("--scene_id", type=str, default=None)
+        self.parser.add_argument("--object_id", type=str, default=None)
+        self.parser.add_argument("--ann_id", type=str, default=None)
 
         self.parser.add_argument("--debug", action="store_true", help="Debug mode.")
 
@@ -176,6 +179,11 @@ class Config():
         CONF.PATH.GT_FEATURES = os.path.join(CONF.PATH.CLUSTER, "gt_{}_features") # dataset
         # CONF.PATH.VOTENET_FEATURES = os.path.join(CONF.PATH.CLUSTER, "votenet_features")
         CONF.PATH.VOTENET_FEATURES = os.path.join(CONF.PATH.CLUSTER, "votenet_{}_predictions") # dataset
+
+        if CONF.pretrain_model == "votenet":
+            CONF.no_height = False
+            CONF.hidden_size = 128
+            CONF.num_points = 40000
 
         if CONF.pretrain_data == "scannet" and CONF.pretrain_model == "votenet":
             CONF.PATH.VOTENET_PRETRAIN = os.path.join(CONF.PATH.PRETRAINED, "votenet", "pretrained_votenet_on_scannet.tar")

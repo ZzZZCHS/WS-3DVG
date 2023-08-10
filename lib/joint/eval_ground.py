@@ -108,11 +108,11 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
 
         cluster_preds = torch.zeros(bs*len_num_max, num_proposal).cuda()
         for i in range(cluster_preds.shape[0]):
-            candidates = torch.arange(num_proposal)[candidate_mask[i].bool()]
+            candidates = torch.arange(num_proposal).cuda()[candidate_mask[i].bool()]
             if candidates.shape[0] == 0:
-                candidates = torch.arange(num_proposal)[target_object_mask[i].bool()]
+                candidates = torch.arange(num_proposal).cuda()[target_object_mask[i].bool()]
             try:
-                chosen_idx = torch.randperm(candidates.shape[0])[0]
+                chosen_idx = torch.randperm(candidates.shape[0]).cuda()[0]
                 chosen_candidate = candidates[chosen_idx]
                 cluster_preds[i, chosen_candidate] = 1
             except IndexError:

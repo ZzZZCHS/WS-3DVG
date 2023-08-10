@@ -126,7 +126,7 @@ class RelationModule(nn.Module):
                     dim=-1).float()
                 bbox_embedding = self.bbox_embedding[i](manual_bbox_feat)
                 features = features + bbox_embedding
-            #objectness_masks = data_dict['objectness_scores'].max(2)[1].float().unsqueeze(2)  # batch_size, num_proposals, 1
+            # objectness_masks = data_dict['objectness_scores'].max(2)[1].float().unsqueeze(2)  # batch_size, num_proposals, 1
 
             features = self.self_attn[i](features, features, features, attention_weights=dist_weights,
                                          way=attention_matrix_way)

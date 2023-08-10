@@ -168,6 +168,7 @@ def eval_ref(args):
     print("model:", count_parameters(model))
     print("backbone:", count_parameters(model.group_free))
     print("recon:", count_parameters(model.recnet))
+    print("match:", count_parameters(model.match))
 
     # config
     POST_DICT = None
@@ -223,69 +224,69 @@ def eval_ref(args):
 
                 # feed
                 with torch.no_grad():
-                    # with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
-                    data["epoch"] = 0
-                    start = time.time()
-                    # with record_function("model_inference"):
-                    data = model(data, is_eval=args.is_eval)
-                    # with record_function("loss_calc"):
-                    data = get_joint_loss(
-                        data_dict=data,
-                        config=DC,
-                        is_eval=args.is_eval
-                    )
-                    # with record_function("eval"):
-                    data = get_eval(
-                        data_dict=data,
-                        config=DC,
-                        reference=True,
-                        use_lang_classifier=not args.no_lang_cls,
-                        use_cat_rand=False,
-                        use_best=args.use_best,
-                        use_random=args.eval_rand,
-                        is_eval=args.is_eval,
-                        k=args.topk
-                    )
-                    forward_times.append(time.time() - start)
-                    # ref_acc += data["ref_acc"]
-                    ious += data["ref_iou"]
-                    top5_ious += data["top5_iou"]
-                    rec_ious += data["rec_iou"]
-                    top5_rec_ious += data["top5_rec_iou"]
-                    rand_ious += data["rand_iou"]
-                    top5_rand_ious += data["top5_rand_iou"]
-                    best_ious += data["best_iou"]
-                    masks += data["ref_multiple_mask"]
-                    others += data["ref_others_mask"]
-                    lang_acc.append(data["lang_acc"].item())
-                    # store predictions
-                    ids = data["scan_idx"].detach().cpu().numpy()
-                    for i in range(ids.shape[0]):
-                        idx = ids[i]
-                        scene_id = scanrefer[idx]["scene_id"]
-                        object_id = scanrefer[idx]["object_id"]
-                        ann_id = scanrefer[idx]["ann_id"]
+                    with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
+                        data["epoch"] = 0
+                        start = time.time()
+                        with record_function("model_inference"):
+                            data = model(data, is_eval=args.is_eval)
+                        # with record_function("loss_calc"):
+                            data = get_joint_loss(
+                                data_dict=data,
+                                config=DC,
+                                is_eval=args.is_eval
+                            )
+                        with record_function("eval"):
+                            data = get_eval(
+                                data_dict=data,
+                                config=DC,
+                                reference=True,
+                                use_lang_classifier=not args.no_lang_cls,
+                                use_cat_rand=False,
+                                use_best=args.use_best,
+                                use_random=args.eval_rand,
+                                is_eval=args.is_eval,
+                                k=args.topk
+                            )
+                        forward_times.append(time.time() - start)
+                        # ref_acc += data["ref_acc"]
+                        ious += data["ref_iou"]
+                        top5_ious += data["top5_iou"]
+                        rec_ious += data["rec_iou"]
+                        top5_rec_ious += data["top5_rec_iou"]
+                        rand_ious += data["rand_iou"]
+                        top5_rand_ious += data["top5_rand_iou"]
+                        best_ious += data["best_iou"]
+                        masks += data["ref_multiple_mask"]
+                        others += data["ref_others_mask"]
+                        lang_acc.append(data["lang_acc"].item())
+                        # store predictions
+                        ids = data["scan_idx"].detach().cpu().numpy()
+                        for i in range(ids.shape[0]):
+                            idx = ids[i]
+                            scene_id = scanrefer[idx]["scene_id"]
+                            object_id = scanrefer[idx]["object_id"]
+                            ann_id = scanrefer[idx]["ann_id"]
 
-                        if scene_id not in predictions:
-                            predictions[scene_id] = {}
+                            if scene_id not in predictions:
+                                predictions[scene_id] = {}
 
-                        if object_id not in predictions[scene_id]:
-                            predictions[scene_id][object_id] = {}
+                            if object_id not in predictions[scene_id]:
+                                predictions[scene_id][object_id] = {}
 
-                        if ann_id not in predictions[scene_id][object_id]:
-                            predictions[scene_id][object_id][ann_id] = {}
+                            if ann_id not in predictions[scene_id][object_id]:
+                                predictions[scene_id][object_id][ann_id] = {}
 
-                        predictions[scene_id][object_id][ann_id]["pred_bbox"] = data["pred_bboxes"][i]
-                        predictions[scene_id][object_id][ann_id]["gt_bbox"] = data["gt_bboxes"][i]
-                        predictions[scene_id][object_id][ann_id]["iou"] = data["ref_iou"][i]
-                # print(prof.key_averages().table(sort_by="cuda_time_total"))
-                # print(prof.key_averages().table(sort_by="cpu_time_total"))
-                # sys.exit()
+                            predictions[scene_id][object_id][ann_id]["pred_bbox"] = data["pred_bboxes"][i]
+                            predictions[scene_id][object_id][ann_id]["gt_bbox"] = data["gt_bboxes"][i]
+                            predictions[scene_id][object_id][ann_id]["iou"] = data["ref_iou"][i]
+                print(prof.key_averages().table(sort_by="cuda_time_total"))
+                print(prof.key_averages().table(sort_by="cpu_time_total"))
+                sys.exit()
             # print(prof.key_averages().table(sort_by="cuda_time_total"))
             # print(prof.key_averages().table(sort_by="cpu_time_total"))
             # sys.exit()
             mean_forward_time = np.mean(forward_times)
-            # print("mean forward time:", mean_forward_time)
+            print("mean forward time:", mean_forward_time)
             # save the last predictions
             with open(pred_path, "wb") as f:
                 pickle.dump(predictions, f)
