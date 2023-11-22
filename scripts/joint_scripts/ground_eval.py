@@ -18,7 +18,6 @@ from copy import deepcopy
 sys.path.append(os.path.join(os.getcwd())) # HACK add the root folder
 from lib.configs.config import CONF
 from lib.joint.dataset import ScannetReferenceDataset
-from lib.ap_helper.ap_helper_fcos import APCalculator, parse_predictions, parse_groundtruths
 from lib.loss_helper.loss_joint import get_joint_loss
 from lib.joint.eval_ground import get_eval
 from models.jointnet.jointnet import JointNet
@@ -66,12 +65,7 @@ def get_model(args, DC, dataset):
     # input_channels = int(args.use_multiview) * 128 + int(args.use_normal) * 3 + int(args.use_color) * 3 + int(not args.no_height)
     input_channels = int(not args.no_height) + int(args.use_color) * 3
     model = JointNet(
-        # num_class=DC.num_class,
         vocabulary=dataset.vocabulary,
-        # embeddings=dataset.glove,
-        # num_heading_bin=DC.num_heading_bin,
-        # num_size_cluster=DC.num_size_cluster,
-        # mean_size_arr=DC.mean_size_arr,
         input_feature_dim=input_channels,
         width=args.width,
         hidden_size=args.hidden_size,
@@ -185,11 +179,11 @@ def eval_ref(args):
     if gen_flag:
         # ref_acc_all = []
         ious_all = []
-        top5_ious_all = []
+        topk_ious_all = []
         rec_ious_all = []
-        top5_rec_ious_all = []
+        topk_rec_ious_all = []
         rand_ious_all = []
-        top5_rand_ious_all = []
+        topk_rand_ious_all = []
         best_ious_all = []
         masks_all = []
         others_all = []
@@ -206,11 +200,11 @@ def eval_ref(args):
             print("generating the scores for seed {}...".format(seed))
             # ref_acc = []
             ious = []
-            top5_ious = []
+            topk_ious = []
             rec_ious = []
-            top5_rec_ious = []
+            topk_rec_ious = []
             rand_ious = []
-            top5_rand_ious = []
+            topk_rand_ious = []
             best_ious = []
 
             masks = []
@@ -224,67 +218,65 @@ def eval_ref(args):
 
                 # feed
                 with torch.no_grad():
-                    with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
-                        data["epoch"] = 0
-                        start = time.time()
-                        with record_function("model_inference"):
-                            data = model(data, is_eval=args.is_eval)
-                        # with record_function("loss_calc"):
-                            data = get_joint_loss(
-                                data_dict=data,
-                                config=DC,
-                                is_eval=args.is_eval
-                            )
-                        with record_function("eval"):
-                            data = get_eval(
-                                data_dict=data,
-                                config=DC,
-                                reference=True,
-                                use_lang_classifier=not args.no_lang_cls,
-                                use_cat_rand=False,
-                                use_best=args.use_best,
-                                use_random=args.eval_rand,
-                                is_eval=args.is_eval,
-                                k=args.topk
-                            )
-                        forward_times.append(time.time() - start)
-                        # ref_acc += data["ref_acc"]
-                        ious += data["ref_iou"]
-                        top5_ious += data["top5_iou"]
-                        rec_ious += data["rec_iou"]
-                        top5_rec_ious += data["top5_rec_iou"]
-                        rand_ious += data["rand_iou"]
-                        top5_rand_ious += data["top5_rand_iou"]
-                        best_ious += data["best_iou"]
-                        masks += data["ref_multiple_mask"]
-                        others += data["ref_others_mask"]
-                        lang_acc.append(data["lang_acc"].item())
-                        # store predictions
-                        ids = data["scan_idx"].detach().cpu().numpy()
-                        for i in range(ids.shape[0]):
-                            idx = ids[i]
-                            scene_id = scanrefer[idx]["scene_id"]
-                            object_id = scanrefer[idx]["object_id"]
-                            ann_id = scanrefer[idx]["ann_id"]
+                    # with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
+                    data["epoch"] = 0
+                    start = time.time()
+                    with record_function("model_inference"):
+                        data = model(data, is_eval=args.is_eval)
+                    # with record_function("loss_calc"):
+                        data = get_joint_loss(
+                            data_dict=data,
+                            config=DC,
+                            is_eval=args.is_eval
+                        )
+                    with record_function("eval"):
+                        data = get_eval(
+                            data_dict=data,
+                            config=DC,
+                            reference=True,
+                            use_lang_classifier=not args.no_lang_cls,
+                            use_cat_rand=False,
+                            use_best=args.use_best,
+                            use_random=args.eval_rand,
+                            is_eval=args.is_eval,
+                            k=args.topk
+                        )
+                    forward_times.append(time.time() - start)
+                    # ref_acc += data["ref_acc"]
+                    ious += data["ref_iou"]
+                    topk_ious += data["topk_iou"]
+                    rec_ious += data["rec_iou"]
+                    topk_rec_ious += data["topk_rec_iou"]
+                    rand_ious += data["rand_iou"]
+                    topk_rand_ious += data["topk_rand_iou"]
+                    best_ious += data["best_iou"]
+                    masks += data["ref_multiple_mask"]
+                    others += data["ref_others_mask"]
+                    lang_acc.append(data["lang_acc"].item())
+                    # store predictions
+                    ids = data["scan_idx"].detach().cpu().numpy()
+                    for i in range(ids.shape[0]):
+                        idx = ids[i]
+                        scene_id = scanrefer[idx]["scene_id"]
+                        object_id = scanrefer[idx]["object_id"]
+                        ann_id = scanrefer[idx]["ann_id"]
 
-                            if scene_id not in predictions:
-                                predictions[scene_id] = {}
+                        if scene_id not in predictions:
+                            predictions[scene_id] = {}
 
-                            if object_id not in predictions[scene_id]:
-                                predictions[scene_id][object_id] = {}
+                        if object_id not in predictions[scene_id]:
+                            predictions[scene_id][object_id] = {}
 
-                            if ann_id not in predictions[scene_id][object_id]:
-                                predictions[scene_id][object_id][ann_id] = {}
+                        if ann_id not in predictions[scene_id][object_id]:
+                            predictions[scene_id][object_id][ann_id] = {}
 
-                            predictions[scene_id][object_id][ann_id]["pred_bbox"] = data["pred_bboxes"][i]
-                            predictions[scene_id][object_id][ann_id]["gt_bbox"] = data["gt_bboxes"][i]
-                            predictions[scene_id][object_id][ann_id]["iou"] = data["ref_iou"][i]
-                print(prof.key_averages().table(sort_by="cuda_time_total"))
-                print(prof.key_averages().table(sort_by="cpu_time_total"))
-                sys.exit()
+                        predictions[scene_id][object_id][ann_id]["pred_bbox"] = data["pred_bboxes"][i]
+                        predictions[scene_id][object_id][ann_id]["gt_bbox"] = data["gt_bboxes"][i]
+                        predictions[scene_id][object_id][ann_id]["iou"] = data["ref_iou"][i]
+                # print(prof.key_averages().table(sort_by="cuda_time_total"))
+                # print(prof.key_averages().table(sort_by="cpu_time_total"))
             # print(prof.key_averages().table(sort_by="cuda_time_total"))
             # print(prof.key_averages().table(sort_by="cpu_time_total"))
-            # sys.exit()
             mean_forward_time = np.mean(forward_times)
             print("mean forward time:", mean_forward_time)
             # save the last predictions
@@ -293,11 +285,11 @@ def eval_ref(args):
 
             # save to global
             ious_all.append(ious)
-            top5_ious_all.append(top5_ious)
+            topk_ious_all.append(topk_ious)
             rec_ious_all.append(rec_ious)
-            top5_rec_ious_all.append(top5_rec_ious)
+            topk_rec_ious_all.append(topk_rec_ious)
             rand_ious_all.append(rand_ious)
-            top5_rand_ious_all.append(top5_rand_ious)
+            topk_rand_ious_all.append(topk_rand_ious)
             best_ious_all.append(best_ious)
             masks_all.append(masks)
             others_all.append(others)
@@ -305,11 +297,11 @@ def eval_ref(args):
 
         # convert to numpy array
         ious = np.array(ious_all)
-        top5_ious = np.array(top5_ious_all)
+        topk_ious = np.array(topk_ious_all)
         rec_ious = np.array(rec_ious_all)
-        top5_rec_ious = np.array(top5_rec_ious_all)
+        topk_rec_ious = np.array(topk_rec_ious_all)
         rand_ious = np.array(rand_ious_all)
-        top5_rand_ious = np.array(top5_rand_ious_all)
+        topk_rand_ious = np.array(topk_rand_ious_all)
         best_ious = np.array(best_ious_all)
         masks = np.array(masks_all)
         others = np.array(others_all)
@@ -319,11 +311,11 @@ def eval_ref(args):
         with open(score_path, "wb") as f:
             scores = {
                 "ious": ious_all,
-                "top5_ious": top5_ious_all,
+                "topk_ious": topk_ious_all,
                 "rec_ious": rec_ious_all,
-                "top5_rec_ious": top5_rec_ious_all,
+                "topk_rec_ious": topk_rec_ious_all,
                 "rand_ious": rand_ious_all,
-                "top5_rand_ious": top5_rand_ious_all,
+                "topk_rand_ious": topk_rand_ious_all,
                 "masks": masks_all,
                 "others": others_all,
                 "lang_acc": lang_acc_all
@@ -337,20 +329,20 @@ def eval_ref(args):
 
             # unpack
             ious = np.array(scores["ious"])
-            top5_ious = np.array(scores["top5_ious"])
+            topk_ious = np.array(scores["topk_ious"])
             if not args.is_eval:
                 rec_ious = np.array(scores["rec_ious"])
-                top5_rec_ious = np.array(scores["top5_rec_ious"])
+                topk_rec_ious = np.array(scores["topk_rec_ious"])
             if args.eval_rand:
                 rand_ious = np.array(scores["rand_ious"])
-                top5_rand_ious = np.array(scores["top5_rand_ious"])
+                topk_rand_ious = np.array(scores["topk_rand_ious"])
             masks = np.array(scores["masks"])
             others = np.array(scores["others"])
             lang_acc = np.array(scores["lang_acc"])
 
     if args.eval_rand:
         ious = rand_ious
-        top5_ious = top5_rand_ious
+        topk_ious = topk_rand_ious
 
     if args.use_best:
         ious = best_ious
@@ -385,7 +377,7 @@ def eval_ref(args):
     scores = {}
     for k, v in multiple_dict.items():
         for k_o in others_dict.keys():
-            top5_acc_025ious, top5_acc_05ious, acc_025ious, acc_05ious = [], [], [], []
+            topk_acc_025ious, topk_acc_05ious, acc_025ious, acc_05ious = [], [], [], []
             for i in range(masks.shape[0]):
                 running_acc_025iou = ious[i][np.logical_and(np.logical_and(masks[i] == multiple_dict[k], others[i] == others_dict[k_o]), ious[i] >= 0.25)].shape[0] \
                     / ious[i][np.logical_and(masks[i] == multiple_dict[k], others[i] == others_dict[k_o])].shape[0] \
@@ -393,16 +385,16 @@ def eval_ref(args):
                 running_acc_05iou = ious[i][np.logical_and(np.logical_and(masks[i] == multiple_dict[k], others[i] == others_dict[k_o]), ious[i] >= 0.5)].shape[0] \
                     / ious[i][np.logical_and(masks[i] == multiple_dict[k], others[i] == others_dict[k_o])].shape[0] \
                     if np.sum(np.logical_and(masks[i] == multiple_dict[k], others[i] == others_dict[k_o])) > 0 else 0
-                running_top5_acc_025iou = top5_ious[i][np.logical_and(
+                running_topk_acc_025iou = topk_ious[i][np.logical_and(
                     np.logical_and(masks[i] == multiple_dict[k], others[i] == others_dict[k_o]),
-                    top5_ious[i] >= 0.25)].shape[0] / top5_ious[i][np.logical_and(masks[i] == multiple_dict[k],
+                    topk_ious[i] >= 0.25)].shape[0] / topk_ious[i][np.logical_and(masks[i] == multiple_dict[k],
                                                                                   others[i] == others_dict[k_o])].shape[
                                               0] if np.sum(
                     np.logical_and(masks[i] == multiple_dict[k], others[i] == others_dict[k_o])) > 0 else 0
-                running_top5_acc_05iou = top5_ious[i][np.logical_and(
+                running_topk_acc_05iou = topk_ious[i][np.logical_and(
                     np.logical_and(masks[i] == multiple_dict[k], others[i] == others_dict[k_o]),
-                    top5_ious[i] >= 0.5)].shape[
-                                             0] / top5_ious[i][np.logical_and(masks[i] == multiple_dict[k],
+                    topk_ious[i] >= 0.5)].shape[
+                                             0] / topk_ious[i][np.logical_and(masks[i] == multiple_dict[k],
                                                                               others[i] == others_dict[k_o])].shape[
                                              0] if np.sum(
                     np.logical_and(masks[i] == multiple_dict[k], others[i] == others_dict[k_o])) > 0 else 0
@@ -410,125 +402,125 @@ def eval_ref(args):
                 # store
                 acc_025ious.append(running_acc_025iou)
                 acc_05ious.append(running_acc_05iou)
-                top5_acc_025ious.append(running_top5_acc_025iou)
-                top5_acc_05ious.append(running_top5_acc_05iou)
+                topk_acc_025ious.append(running_topk_acc_025iou)
+                topk_acc_05ious.append(running_topk_acc_05iou)
 
             if k not in scores:
                 scores[k] = {k_o: {} for k_o in others_dict.keys()}
 
             scores[k][k_o]["acc@0.25iou"] = np.mean(acc_025ious)
             scores[k][k_o]["acc@0.5iou"] = np.mean(acc_05ious)
-            scores[k][k_o]["top5_acc@0.25iou"] = np.mean(top5_acc_025ious)
-            scores[k][k_o]["top5_acc@0.5iou"] = np.mean(top5_acc_05ious)
+            scores[k][k_o]["topk_acc@0.25iou"] = np.mean(topk_acc_025ious)
+            scores[k][k_o]["topk_acc@0.5iou"] = np.mean(topk_acc_05ious)
 
-        top5_acc_025ious, top5_acc_05ious, acc_025ious, acc_05ious = [], [], [], []
+        topk_acc_025ious, topk_acc_05ious, acc_025ious, acc_05ious = [], [], [], []
         for i in range(masks.shape[0]):
             running_acc_025iou = ious[i][np.logical_and(masks[i] == multiple_dict[k], ious[i] >= 0.25)].shape[0] \
                 / ious[i][masks[i] == multiple_dict[k]].shape[0] if np.sum(masks[i] == multiple_dict[k]) > 0 else 0
             running_acc_05iou = ious[i][np.logical_and(masks[i] == multiple_dict[k], ious[i] >= 0.5)].shape[0] \
                 / ious[i][masks[i] == multiple_dict[k]].shape[0] if np.sum(masks[i] == multiple_dict[k]) > 0 else 0
-            running_top5_acc_025iou = \
-            top5_ious[i][np.logical_and(masks[i] == multiple_dict[k], top5_ious[i] >= 0.25)].shape[0] \
-            / top5_ious[i][masks[i] == multiple_dict[k]].shape[0] if np.sum(
+            running_topk_acc_025iou = \
+            topk_ious[i][np.logical_and(masks[i] == multiple_dict[k], topk_ious[i] >= 0.25)].shape[0] \
+            / topk_ious[i][masks[i] == multiple_dict[k]].shape[0] if np.sum(
                 masks[i] == multiple_dict[k]) > 0 else 0
-            running_top5_acc_05iou = \
-            top5_ious[i][np.logical_and(masks[i] == multiple_dict[k], top5_ious[i] >= 0.5)].shape[0] \
-            / top5_ious[i][masks[i] == multiple_dict[k]].shape[0] if np.sum(
+            running_topk_acc_05iou = \
+            topk_ious[i][np.logical_and(masks[i] == multiple_dict[k], topk_ious[i] >= 0.5)].shape[0] \
+            / topk_ious[i][masks[i] == multiple_dict[k]].shape[0] if np.sum(
                 masks[i] == multiple_dict[k]) > 0 else 0
 
             # store
             acc_025ious.append(running_acc_025iou)
             acc_05ious.append(running_acc_05iou)
-            top5_acc_025ious.append(running_top5_acc_025iou)
-            top5_acc_05ious.append(running_top5_acc_05iou)
+            topk_acc_025ious.append(running_topk_acc_025iou)
+            topk_acc_05ious.append(running_topk_acc_05iou)
 
         scores[k]["overall"] = {}
         scores[k]["overall"]["acc@0.25iou"] = np.mean(acc_025ious)
         scores[k]["overall"]["acc@0.5iou"] = np.mean(acc_05ious)
-        scores[k]["overall"]["top5_acc@0.25iou"] = np.mean(top5_acc_025ious)
-        scores[k]["overall"]["top5_acc@0.5iou"] = np.mean(top5_acc_05ious)
+        scores[k]["overall"]["topk_acc@0.25iou"] = np.mean(topk_acc_025ious)
+        scores[k]["overall"]["topk_acc@0.5iou"] = np.mean(topk_acc_05ious)
 
     scores["overall"] = {}
     for k_o in others_dict.keys():
-        top5_acc_025ious, top5_acc_05ious, acc_025ious, acc_05ious = [], [], [], []
+        topk_acc_025ious, topk_acc_05ious, acc_025ious, acc_05ious = [], [], [], []
         for i in range(masks.shape[0]):
             running_acc_025iou = ious[i][np.logical_and(others[i] == others_dict[k_o], ious[i] >= 0.25)].shape[0] \
                 / ious[i][others[i] == others_dict[k_o]].shape[0] if np.sum(others[i] == others_dict[k_o]) > 0 else 0
             running_acc_05iou = ious[i][np.logical_and(others[i] == others_dict[k_o], ious[i] >= 0.5)].shape[0] \
                 / ious[i][others[i] == others_dict[k_o]].shape[0] if np.sum(others[i] == others_dict[k_o]) > 0 else 0
-            running_top5_acc_025iou = \
-            top5_ious[i][np.logical_and(others[i] == others_dict[k_o], top5_ious[i] >= 0.25)].shape[0] \
-            / top5_ious[i][others[i] == others_dict[k_o]].shape[0] if np.sum(
+            running_topk_acc_025iou = \
+            topk_ious[i][np.logical_and(others[i] == others_dict[k_o], topk_ious[i] >= 0.25)].shape[0] \
+            / topk_ious[i][others[i] == others_dict[k_o]].shape[0] if np.sum(
                 others[i] == others_dict[k_o]) > 0 else 0
-            running_top5_acc_05iou = \
-            top5_ious[i][np.logical_and(others[i] == others_dict[k_o], top5_ious[i] >= 0.5)].shape[0] \
-            / top5_ious[i][others[i] == others_dict[k_o]].shape[0] if np.sum(
+            running_topk_acc_05iou = \
+            topk_ious[i][np.logical_and(others[i] == others_dict[k_o], topk_ious[i] >= 0.5)].shape[0] \
+            / topk_ious[i][others[i] == others_dict[k_o]].shape[0] if np.sum(
                 others[i] == others_dict[k_o]) > 0 else 0
 
             # store
             acc_025ious.append(running_acc_025iou)
             acc_05ious.append(running_acc_05iou)
-            top5_acc_025ious.append(running_top5_acc_025iou)
-            top5_acc_05ious.append(running_top5_acc_05iou)
+            topk_acc_025ious.append(running_topk_acc_025iou)
+            topk_acc_05ious.append(running_topk_acc_05iou)
 
         # aggregate
         scores["overall"][k_o] = {}
         scores["overall"][k_o]["acc@0.25iou"] = np.mean(acc_025ious)
         scores["overall"][k_o]["acc@0.5iou"] = np.mean(acc_05ious)
-        scores["overall"][k_o]["top5_acc@0.25iou"] = np.mean(top5_acc_025ious)
-        scores["overall"][k_o]["top5_acc@0.5iou"] = np.mean(top5_acc_05ious)
+        scores["overall"][k_o]["topk_acc@0.25iou"] = np.mean(topk_acc_025ious)
+        scores["overall"][k_o]["topk_acc@0.5iou"] = np.mean(topk_acc_05ious)
    
-    top5_acc_025ious, top5_acc_05ious, acc_025ious, acc_05ious = [], [], [], []
-    top5_rec_acc_025ious, top5_rec_acc_05ious, rec_acc_025ious, rec_acc_05ious = [], [], [], []
-    # top5_rand_acc_025ious, top5_rand_acc_05ious, rand_acc_025ious, rand_acc_05ious = [], [], [], []
+    topk_acc_025ious, topk_acc_05ious, acc_025ious, acc_05ious = [], [], [], []
+    topk_rec_acc_025ious, topk_rec_acc_05ious, rec_acc_025ious, rec_acc_05ious = [], [], [], []
+    # topk_rand_acc_025ious, topk_rand_acc_05ious, rand_acc_025ious, rand_acc_05ious = [], [], [], []
     for i in range(masks.shape[0]):
         running_acc_025iou = ious[i][ious[i] >= 0.25].shape[0] / ious[i].shape[0]
         running_acc_05iou = ious[i][ious[i] >= 0.5].shape[0] / ious[i].shape[0]
-        running_top5_acc_025iou = top5_ious[i][top5_ious[i] >= 0.25].shape[0] / top5_ious[i].shape[0]
-        running_top5_acc_05iou = top5_ious[i][top5_ious[i] >= 0.5].shape[0] / top5_ious[i].shape[0]
+        running_topk_acc_025iou = topk_ious[i][topk_ious[i] >= 0.25].shape[0] / topk_ious[i].shape[0]
+        running_topk_acc_05iou = topk_ious[i][topk_ious[i] >= 0.5].shape[0] / topk_ious[i].shape[0]
         if not args.is_eval:
             running_rec_acc_025iou = rec_ious[i][rec_ious[i] >= 0.25].shape[0] / rec_ious[i].shape[0]
             running_rec_acc_05iou = rec_ious[i][rec_ious[i] >= 0.5].shape[0] / rec_ious[i].shape[0]
-            running_top5_rec_acc_025iou = top5_rec_ious[i][top5_rec_ious[i] >= 0.25].shape[0] / top5_rec_ious[i].shape[0]
-            running_top5_rec_acc_05iou = top5_rec_ious[i][top5_rec_ious[i] >= 0.5].shape[0] / top5_rec_ious[i].shape[0]
+            running_topk_rec_acc_025iou = topk_rec_ious[i][topk_rec_ious[i] >= 0.25].shape[0] / topk_rec_ious[i].shape[0]
+            running_topk_rec_acc_05iou = topk_rec_ious[i][topk_rec_ious[i] >= 0.5].shape[0] / topk_rec_ious[i].shape[0]
         # if args.eval_rand:
         #     running_rand_acc_025iou = rand_ious[i][rand_ious[i] >= 0.25].shape[0] / rand_ious[i].shape[0]
         #     running_rand_acc_05iou = rand_ious[i][rand_ious[i] >= 0.5].shape[0] / rand_ious[i].shape[0]
-        #     running_top5_rand_acc_025iou = top5_rand_ious[i][top5_rand_ious[i] >= 0.25].shape[0] / top5_rand_ious[i].shape[0]
-        #     running_top5_rand_acc_05iou = top5_rand_ious[i][top5_rand_ious[i] >= 0.5].shape[0] / top5_rand_ious[i].shape[0]
+        #     running_topk_rand_acc_025iou = topk_rand_ious[i][topk_rand_ious[i] >= 0.25].shape[0] / topk_rand_ious[i].shape[0]
+        #     running_topk_rand_acc_05iou = topk_rand_ious[i][topk_rand_ious[i] >= 0.5].shape[0] / topk_rand_ious[i].shape[0]
 
         # store
         acc_025ious.append(running_acc_025iou)
         acc_05ious.append(running_acc_05iou)
-        top5_acc_025ious.append(running_top5_acc_025iou)
-        top5_acc_05ious.append(running_top5_acc_05iou)
+        topk_acc_025ious.append(running_topk_acc_025iou)
+        topk_acc_05ious.append(running_topk_acc_05iou)
         if not args.is_eval:
             rec_acc_025ious.append(running_rec_acc_025iou)
             rec_acc_05ious.append(running_rec_acc_05iou)
-            top5_rec_acc_025ious.append(running_top5_rec_acc_025iou)
-            top5_rec_acc_05ious.append(running_top5_rec_acc_05iou)
+            topk_rec_acc_025ious.append(running_topk_rec_acc_025iou)
+            topk_rec_acc_05ious.append(running_topk_rec_acc_05iou)
         # if args.eval_rand:
         #     rand_acc_025ious.append(running_rand_acc_025iou)
         #     rand_acc_05ious.append(running_rand_acc_05iou)
-        #     top5_rand_acc_025ious.append(running_top5_rand_acc_025iou)
-        #     top5_rand_acc_05ious.append(running_top5_rand_acc_05iou)
+        #     topk_rand_acc_025ious.append(running_topk_rand_acc_025iou)
+        #     topk_rand_acc_05ious.append(running_topk_rand_acc_05iou)
 
     # aggregate
     scores["overall"]["overall"] = {}
     scores["overall"]["overall"]["acc@0.25iou"] = np.mean(acc_025ious)
     scores["overall"]["overall"]["acc@0.5iou"] = np.mean(acc_05ious)
-    scores["overall"]["overall"]["top5_acc@0.25iou"] = np.mean(top5_acc_025ious)
-    scores["overall"]["overall"]["top5_acc@0.5iou"] = np.mean(top5_acc_05ious)
+    scores["overall"]["overall"]["topk_acc@0.25iou"] = np.mean(topk_acc_025ious)
+    scores["overall"]["overall"]["topk_acc@0.5iou"] = np.mean(topk_acc_05ious)
     if not args.is_eval:
         scores["overall"]["overall"]["rec_acc@0.25iou"] = np.mean(rec_acc_025ious)
         scores["overall"]["overall"]["rec_acc@0.5iou"] = np.mean(rec_acc_05ious)
-        scores["overall"]["overall"]["top5_rec_acc@0.25iou"] = np.mean(top5_rec_acc_025ious)
-        scores["overall"]["overall"]["top5_rec_acc@0.5iou"] = np.mean(top5_rec_acc_05ious)
+        scores["overall"]["overall"]["topk_rec_acc@0.25iou"] = np.mean(topk_rec_acc_025ious)
+        scores["overall"]["overall"]["topk_rec_acc@0.5iou"] = np.mean(topk_rec_acc_05ious)
     # if args.eval_rand:
     #     scores["overall"]["overall"]["rand_acc@0.25iou"] = np.mean(rand_acc_025ious)
     #     scores["overall"]["overall"]["rand_acc@0.5iou"] = np.mean(rand_acc_05ious)
-    #     scores["overall"]["overall"]["top5_rand_acc@025iou"] = np.mean(top5_rand_acc_025ious)
-    #     scores["overall"]["overall"]["top5_rand_acc@05iou"] = np.mean(top5_rand_acc_05ious)
+    #     scores["overall"]["overall"]["topk_rand_acc@025iou"] = np.mean(topk_rand_acc_025ious)
+    #     scores["overall"]["overall"]["topk_rand_acc@05iou"] = np.mean(topk_rand_acc_05ious)
 
     # report
     print("\nstats:")

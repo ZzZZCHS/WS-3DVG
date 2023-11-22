@@ -39,7 +39,7 @@ ITER_REPORT_TEMPLATE = """
 [sco.] train_rec_iou_0.1: {train_rec_iou_1}, train_rec_iou_0.25: {train_rec_iou_25}, train_rec_iou_0.5: {train_rec_iou_5}
 [sco.] train_rand_iou_0.1: {train_rand_iou_1}, train_rand_iou_0.25: {train_rand_iou_25}, train_rand_iou_0.5: {train_rand_iou_5}
 [sco.] train_upper_iou_0.1: {train_upper_iou_1}, train_upper_iou_0.25: {train_upper_iou_25}, train_upper_iou_0.5: {train_upper_iou_5}
-[sco.] train_top5_iou_0.1: {train_top5_iou_1}, train_top5_iou_0.25: {train_top5_iou_25}, train_top5_iou_0.5: {train_top5_iou_5}
+[sco.] train_topk_iou_0.1: {train_topk_iou_1}, train_topk_iou_0.25: {train_topk_iou_25}, train_topk_iou_0.5: {train_topk_iou_5}
 [sco.] train_iou_max_0.1: {train_iou_max_1}, train_iou_max_0.25: {train_iou_max_25}, train_iou_max_0.5: {train_iou_max_5}
 [info] mean_fetch_time: {mean_fetch_time}s
 [info] mean_forward_time: {mean_forward_time}s
@@ -66,7 +66,7 @@ EPOCH_REPORT_TEMPLATE = """
 [train] train_rec_iou_0.1: {train_rec_iou_1}, train_rec_iou_0.25: {train_rec_iou_25}, train_rec_iou_0.5: {train_rec_iou_5}
 [train] train_rand_iou_0.1: {train_rand_iou_1}, train_rand_iou_0.25: {train_rand_iou_25}, train_rand_iou_0.5: {train_rand_iou_5}
 [train] train_upper_iou_0.1: {train_upper_iou_1}, train_upper_iou_0.25: {train_upper_iou_25}, train_upper_iou_0.5: {train_upper_iou_5}
-[train] train_top5_iou_0.1: {train_top5_iou_1}, train_top5_iou_0.25: {train_top5_iou_25}, train_top5_iou_0.5: {train_top5_iou_5}
+[train] train_topk_iou_0.1: {train_topk_iou_1}, train_topk_iou_0.25: {train_topk_iou_25}, train_topk_iou_0.5: {train_topk_iou_5}
 [train] train_max_iou_0.1: {train_max_iou_1}, train_max_iou_0.25: {train_max_iou_25}, train_max_iou_0.5: {train_max_iou_5}
 [val]   val_lang_acc: {val_lang_acc}
 [val]   val_obj_acc: {val_obj_acc}
@@ -76,7 +76,7 @@ EPOCH_REPORT_TEMPLATE = """
 [val]   val_rec_iou_0.1: {val_rec_iou_1}, val_rec_iou_0.25: {val_rec_iou_25}, val_rec_iou_0.5: {val_rec_iou_5}
 [val]   val_rand_iou_0.1: {val_rand_iou_1}, val_rand_iou_0.25: {val_rand_iou_25}, val_rand_iou_0.5: {val_rand_iou_5}
 [val]   val_upper_iou_0.1: {val_upper_iou_1}, val_upper_iou_0.25: {val_upper_iou_25}, val_upper_iou_0.5: {val_upper_iou_5}
-[val]   val_top5_iou_0.1: {val_top5_iou_1}, val_top5_iou_0.25: {val_top5_iou_25}, val_top5_iou_0.5: {val_top5_iou_5}
+[val]   val_topk_iou_0.1: {val_topk_iou_1}, val_topk_iou_0.25: {val_topk_iou_25}, val_topk_iou_0.5: {val_topk_iou_5}
 [val]   val_max_iou_0.1: {val_max_iou_1}, val_max_iou_0.25: {val_max_iou_25}, val_max_iou_0.5: {val_max_iou_5}
 """
 
@@ -89,7 +89,7 @@ BEST_REPORT_TEMPLATE = """
 [sco.]  iou_0.1: {iou_1}, iou_0.25: {iou_25}, iou_0.5: {iou_5}
 [sco.]  rand_iou_0.1: {rand_iou_1}, rand_iou_0.25: {rand_iou_25}, rand_iou_0.5: {rand_iou_5}
 [sco.]  upper_iou_0.1: {upper_iou_1}, upper_iou_0.25: {upper_iou_25}, upper_iou_0.5: {upper_iou_5}
-[sco.]  top5_iou_0.1: {top5_iou_1}, top5_iou_0.25: {top5_iou_25}, top5_iou_0.5: {top5_iou_5}
+[sco.]  topk_iou_0.1: {topk_iou_1}, topk_iou_0.25: {topk_iou_25}, topk_iou_0.5: {topk_iou_5}
 [sco.]  rec_iou_0.1: {rec_iou_1}, rec_iou_0.25: {rec_iou_25}, rec_iou_0.5: {rec_iou_5}
 """
 
@@ -146,9 +146,9 @@ class Solver():
             "upper_iou_0.1": -float("inf"),
             "upper_iou_0.25": -float("inf"),
             "upper_iou_0.5": -float("inf"),
-            "top5_iou_0.1": -float("inf"),
-            "top5_iou_0.25": -float("inf"),
-            "top5_iou_0.5": -float("inf"),
+            "topk_iou_0.1": -float("inf"),
+            "topk_iou_0.25": -float("inf"),
+            "topk_iou_0.5": -float("inf"),
             "rec_iou_0.1": -float("inf"),
             "rec_iou_0.25": -float("inf"),
             "rec_iou_0.5": -float("inf")
@@ -317,7 +317,7 @@ class Solver():
                 "score": ["lang_acc", "obj_acc", "sem_acc", "pos_ratio", "neg_ratio",
                           "iou_0.1", "iou_0.25", "iou_0.5", "rec_iou_0.1", "rec_iou_0.25", "rec_iou_0.5",
                           "rand_iou_0.1", "rand_iou_0.25", "rand_iou_0.5", "upper_iou_0.1", "upper_iou_0.25", "upper_iou_0.5",
-                          "top5_iou_0.1", "top5_iou_0.25", "top5_iou_0.5",
+                          "topk_iou_0.1", "topk_iou_0.25", "topk_iou_0.5",
                           "max_iou_0.1", "max_iou_0.25", "max_iou_0.5"]
             }
             if self.distributed_rank and self.distributed_rank != 0:
@@ -337,7 +337,7 @@ class Solver():
                 "score": ["lang_acc", "obj_acc", "pos_ratio", "neg_ratio", "sem_acc",
                           "iou_0.1", "iou_0.25", "iou_0.5", "rec_iou_0.1", "rec_iou_0.25", "rec_iou_0.5",
                           "rand_iou_0.1", "rand_iou_0.25", "rand_iou_0.5", "upper_iou_0.1", "upper_iou_0.25", "upper_iou_0.5",
-                          "top5_iou_0.1", "top5_iou_0.25", "top5_iou_0.5",
+                          "topk_iou_0.1", "topk_iou_0.25", "topk_iou_0.5",
                           "max_iou_0.1", "max_iou_0.25", "max_iou_0.5"]
             }
             if self.distributed_rank and self.distributed_rank != 0:
@@ -353,7 +353,7 @@ class Solver():
             print(np.mean(self.log["val"]["iou_0.1"]), np.mean(self.log["val"]["iou_0.25"]), np.mean(self.log["val"]["iou_0.5"]))
             print(np.mean(self.log["val"]["rand_iou_0.1"]), np.mean(self.log["val"]["rand_iou_0.25"]), np.mean(self.log["val"]["rand_iou_0.5"]))
             print(np.mean(self.log["val"]["upper_iou_0.1"]), np.mean(self.log["val"]["upper_iou_0.25"]), np.mean(self.log["val"]["upper_iou_0.5"]))
-            print(np.mean(self.log["val"]["top5_iou_0.1"]), np.mean(self.log["val"]["top5_iou_0.25"]), np.mean(self.log["val"]["top5_iou_0.5"]))
+            print(np.mean(self.log["val"]["topk_iou_0.1"]), np.mean(self.log["val"]["topk_iou_0.25"]), np.mean(self.log["val"]["topk_iou_0.5"]))
 
 
     def _set_phase(self, phase):
@@ -421,42 +421,12 @@ class Solver():
             self._running_log["upper_iou_0.1"] = np.mean(data_dict["upper_iou_0.1"])
             self._running_log["upper_iou_0.25"] = np.mean(data_dict["upper_iou_0.25"])
             self._running_log["upper_iou_0.5"] = np.mean(data_dict["upper_iou_0.5"])
-            self._running_log["top5_iou_0.1"] = np.mean(data_dict["top5_iou_0.1"])
-            self._running_log["top5_iou_0.25"] = np.mean(data_dict["top5_iou_0.25"])
-            self._running_log["top5_iou_0.5"] = np.mean(data_dict["top5_iou_0.5"])
+            self._running_log["topk_iou_0.1"] = np.mean(data_dict["topk_iou_0.1"])
+            self._running_log["topk_iou_0.25"] = np.mean(data_dict["topk_iou_0.25"])
+            self._running_log["topk_iou_0.5"] = np.mean(data_dict["topk_iou_0.5"])
             self._running_log["max_iou_0.1"] = np.mean(data_dict["max_iou_0.1"])
             self._running_log["max_iou_0.25"] = np.mean(data_dict["max_iou_0.25"])
             self._running_log["max_iou_0.5"] = np.mean(data_dict["max_iou_0.5"])
-        # elif phase == "val" and is_eval == True:
-        #     # print(phase, is_eval)
-        #     data_dict = eval_ground(
-        #         data_dict=data_dict,
-        #         config=self.config,
-        #         reference=self.reference,
-        #         use_lang_classifier=self.use_lang_classifier,
-        #         is_eval=is_eval
-        #     )
-        #     # dump
-        #     self._running_log["lang_acc"] = data_dict["lang_acc"].item()
-        #     self._running_log["obj_acc"] = data_dict["obj_acc"].item()
-        #     self._running_log["sem_acc"] = data_dict["sem_acc"].item()
-        #     self._running_log["pos_ratio"] = data_dict["pos_ratio"].item()
-        #     self._running_log["neg_ratio"] = data_dict["neg_ratio"].item()
-        #     self._running_log["iou_0.25"] = np.mean(data_dict["ref_iou_0.25"])
-        #     self._running_log["iou_0.5"] = np.mean(data_dict["ref_iou_0.5"])
-        #     self._running_log["iou_0.1"] = np.mean(data_dict["ref_iou_0.1"])
-        #     self._running_log["rec_iou_0.1"] = np.mean(data_dict["rec_iou_0.1"])
-        #     self._running_log["rec_iou_0.25"] = np.mean(data_dict["rec_iou_0.25"])
-        #     self._running_log["rec_iou_0.5"] = np.mean(data_dict["rec_iou_0.5"])
-        #     self._running_log["rand_iou_0.1"] = np.mean(data_dict["rand_iou_0.1"])
-        #     self._running_log["rand_iou_0.25"] = np.mean(data_dict["rand_iou_0.25"])
-        #     self._running_log["rand_iou_0.5"] = np.mean(data_dict["rand_iou_0.5"])
-        #     self._running_log["upper_iou_0.1"] = np.mean(data_dict["upper_iou_0.1"])
-        #     self._running_log["upper_iou_0.25"] = np.mean(data_dict["upper_iou_0.25"])
-        #     self._running_log["upper_iou_0.5"] = np.mean(data_dict["upper_iou_0.5"])
-        #     self._running_log["max_iou_0.1"] = np.mean(data_dict["max_iou_0.1"])
-        #     self._running_log["max_iou_0.25"] = np.mean(data_dict["max_iou_0.25"])
-        #     self._running_log["max_iou_0.5"] = np.mean(data_dict["max_iou_0.5"])
         else:
             self._running_log["lang_acc"] = 0
             self._running_log["obj_acc"] = 0
@@ -475,9 +445,9 @@ class Solver():
             self._running_log["upper_iou_0.1"] = 0
             self._running_log["upper_iou_0.25"] = 0
             self._running_log["upper_iou_0.5"] = 0
-            self._running_log["top5_iou_0.1"] = 0
-            self._running_log["top5_iou_0.25"] = 0
-            self._running_log["top5_iou_0.5"] = 0
+            self._running_log["topk_iou_0.1"] = 0
+            self._running_log["topk_iou_0.25"] = 0
+            self._running_log["topk_iou_0.5"] = 0
             self._running_log["max_iou_0.1"] = 0
             self._running_log["max_iou_0.25"] = 0
             self._running_log["max_iou_0.5"] = 0
@@ -596,9 +566,9 @@ class Solver():
                     self.log[phase]["upper_iou_0.1"].append(self._running_log["upper_iou_0.1"])
                     self.log[phase]["upper_iou_0.25"].append(self._running_log["upper_iou_0.25"])
                     self.log[phase]["upper_iou_0.5"].append(self._running_log["upper_iou_0.5"])
-                    self.log[phase]["top5_iou_0.1"].append(self._running_log["top5_iou_0.1"])
-                    self.log[phase]["top5_iou_0.25"].append(self._running_log["top5_iou_0.25"])
-                    self.log[phase]["top5_iou_0.5"].append(self._running_log["top5_iou_0.5"])
+                    self.log[phase]["topk_iou_0.1"].append(self._running_log["topk_iou_0.1"])
+                    self.log[phase]["topk_iou_0.25"].append(self._running_log["topk_iou_0.25"])
+                    self.log[phase]["topk_iou_0.5"].append(self._running_log["topk_iou_0.5"])
                     self.log[phase]["max_iou_0.1"].append(self._running_log["max_iou_0.1"])
                     self.log[phase]["max_iou_0.25"].append(self._running_log["max_iou_0.25"])
                     self.log[phase]["max_iou_0.5"].append(self._running_log["max_iou_0.5"])
@@ -674,9 +644,9 @@ class Solver():
                     self.log[phase]["upper_iou_0.1"].append(self._running_log["upper_iou_0.1"])
                     self.log[phase]["upper_iou_0.25"].append(self._running_log["upper_iou_0.25"])
                     self.log[phase]["upper_iou_0.5"].append(self._running_log["upper_iou_0.5"])
-                    self.log[phase]["top5_iou_0.1"].append(self._running_log["top5_iou_0.1"])
-                    self.log[phase]["top5_iou_0.25"].append(self._running_log["top5_iou_0.25"])
-                    self.log[phase]["top5_iou_0.5"].append(self._running_log["top5_iou_0.5"])
+                    self.log[phase]["topk_iou_0.1"].append(self._running_log["topk_iou_0.1"])
+                    self.log[phase]["topk_iou_0.25"].append(self._running_log["topk_iou_0.25"])
+                    self.log[phase]["topk_iou_0.5"].append(self._running_log["topk_iou_0.5"])
                     self.log[phase]["max_iou_0.1"].append(self._running_log["max_iou_0.1"])
                     self.log[phase]["max_iou_0.25"].append(self._running_log["max_iou_0.25"])
                     self.log[phase]["max_iou_0.5"].append(self._running_log["max_iou_0.5"])
@@ -708,9 +678,9 @@ class Solver():
                 self.best["upper_iou_0.1"] = np.mean(self.log[phase]["upper_iou_0.1"])
                 self.best["upper_iou_0.25"] = np.mean(self.log[phase]["upper_iou_0.25"])
                 self.best["upper_iou_0.5"] = np.mean(self.log[phase]["upper_iou_0.5"])
-                self.best["top5_iou_0.1"] = np.mean(self.log[phase]["top5_iou_0.1"])
-                self.best["top5_iou_0.25"] = np.mean(self.log[phase]["top5_iou_0.25"])
-                self.best["top5_iou_0.5"] = np.mean(self.log[phase]["top5_iou_0.5"])
+                self.best["topk_iou_0.1"] = np.mean(self.log[phase]["topk_iou_0.1"])
+                self.best["topk_iou_0.25"] = np.mean(self.log[phase]["topk_iou_0.25"])
+                self.best["topk_iou_0.5"] = np.mean(self.log[phase]["topk_iou_0.5"])
                 self.best["rec_iou_0.1"] = np.mean(self.log[phase]["rec_iou_0.1"])
                 self.best["rec_iou_0.25"] = np.mean(self.log[phase]["rec_iou_0.25"])
                 self.best["rec_iou_0.5"] = np.mean(self.log[phase]["rec_iou_0.5"])
@@ -793,9 +763,9 @@ class Solver():
             train_upper_iou_1=round(np.mean([v for v in self.log["train"]["upper_iou_0.1"]]), 5),
             train_upper_iou_25=round(np.mean([v for v in self.log["train"]["upper_iou_0.25"]]), 5),
             train_upper_iou_5=round(np.mean([v for v in self.log["train"]["upper_iou_0.5"]]), 5),
-            train_top5_iou_1=round(np.mean([v for v in self.log["train"]["top5_iou_0.1"]]), 5),
-            train_top5_iou_25=round(np.mean([v for v in self.log["train"]["top5_iou_0.25"]]), 5),
-            train_top5_iou_5=round(np.mean([v for v in self.log["train"]["top5_iou_0.5"]]), 5),
+            train_topk_iou_1=round(np.mean([v for v in self.log["train"]["topk_iou_0.1"]]), 5),
+            train_topk_iou_25=round(np.mean([v for v in self.log["train"]["topk_iou_0.25"]]), 5),
+            train_topk_iou_5=round(np.mean([v for v in self.log["train"]["topk_iou_0.5"]]), 5),
             train_iou_max_1=round(np.mean([v for v in self.log["train"]["max_iou_0.1"]]), 5),
             train_iou_max_25=round(np.mean([v for v in self.log["train"]["max_iou_0.25"]]), 5),
             train_iou_max_5=round(np.mean([v for v in self.log["train"]["max_iou_0.5"]]), 5),
@@ -817,13 +787,6 @@ class Solver():
         self._log("epoch [{}/{}] done...".format(epoch_id+1, self.epoch))
         self._log_eval("epoch [{}/{}] done...".format(epoch_id + 1, self.epoch))
         epoch_report = self.__epoch_report_template.format(
-            # train_bleu_1=round(self.log["train"]["bleu-1"], 5),
-            # train_bleu_2=round(self.log["train"]["bleu-2"], 5),
-            # train_bleu_3=round(self.log["train"]["bleu-3"], 5),
-            # train_bleu_4=round(self.log["train"]["bleu-4"], 5),
-            # train_cider=round(self.log["train"]["cider"], 5),
-            # train_rouge=round(self.log["train"]["rouge"], 5),
-            # train_meteor=round(self.log["train"]["meteor"], 5),
             train_loss=round(np.mean([v for v in self.log["train"]["loss"]]), 5),
             train_lang_loss=round(np.mean([v for v in self.log["train"]["lang_loss"]]), 5),
             train_grounding_loss=round(np.mean([v for v in self.log["train"]["grounding_loss"]]), 5),
@@ -847,23 +810,12 @@ class Solver():
             train_upper_iou_1=round(np.mean([v for v in self.log["train"]["upper_iou_0.1"]]), 5),
             train_upper_iou_25=round(np.mean([v for v in self.log["train"]["upper_iou_0.25"]]), 5),
             train_upper_iou_5=round(np.mean([v for v in self.log["train"]["upper_iou_0.5"]]), 5),
-            train_top5_iou_1=round(np.mean([v for v in self.log["train"]["top5_iou_0.1"]]), 5),
-            train_top5_iou_25=round(np.mean([v for v in self.log["train"]["top5_iou_0.25"]]), 5),
-            train_top5_iou_5=round(np.mean([v for v in self.log["train"]["top5_iou_0.5"]]), 5),
+            train_topk_iou_1=round(np.mean([v for v in self.log["train"]["topk_iou_0.1"]]), 5),
+            train_topk_iou_25=round(np.mean([v for v in self.log["train"]["topk_iou_0.25"]]), 5),
+            train_topk_iou_5=round(np.mean([v for v in self.log["train"]["topk_iou_0.5"]]), 5),
             train_max_iou_1=round(np.mean([v for v in self.log["train"]["max_iou_0.1"]]), 5),
             train_max_iou_25=round(np.mean([v for v in self.log["train"]["max_iou_0.25"]]), 5),
             train_max_iou_5=round(np.mean([v for v in self.log["train"]["max_iou_0.5"]]), 5),
-            # val_bleu_1=round(self.log["val"]["bleu-1"], 5),
-            # val_bleu_2=round(self.log["val"]["bleu-2"], 5),
-            # val_bleu_3=round(self.log["val"]["bleu-3"], 5),
-            # val_bleu_4=round(self.log["val"]["bleu-4"], 5),
-            # val_cider=round(self.log["val"]["cider"], 5),
-            # val_rouge=round(self.log["val"]["rouge"], 5),
-            # val_meteor=round(self.log["val"]["meteor"], 5),
-            # val_loss=round(np.mean([v for v in self.log["val"]["loss"]]), 5),
-            # val_lang_loss=round(np.mean([v for v in self.log["val"]["lang_loss"]]), 5),
-            # val_weak_loss=round(np.mean([v for v in self.log["val"]["weak_loss"]]), 5),
-            # val_rec_loss=round(np.mean([v for v in self.log["val"]["rec_loss"]]), 5),
             val_lang_acc=round(np.mean([v for v in self.log["val"]["lang_acc"]]), 5),
             val_obj_acc=round(np.mean([v for v in self.log["val"]["obj_acc"]]), 5),
             val_sem_acc=round(np.mean([v for v in self.log["val"]["sem_acc"]]), 5),
@@ -881,9 +833,9 @@ class Solver():
             val_upper_iou_1=round(np.mean([v for v in self.log["val"]["upper_iou_0.1"]]), 5),
             val_upper_iou_25=round(np.mean([v for v in self.log["val"]["upper_iou_0.25"]]), 5),
             val_upper_iou_5=round(np.mean([v for v in self.log["val"]["upper_iou_0.5"]]), 5),
-            val_top5_iou_1=round(np.mean([v for v in self.log["val"]["top5_iou_0.1"]]), 5),
-            val_top5_iou_25=round(np.mean([v for v in self.log["val"]["top5_iou_0.25"]]), 5),
-            val_top5_iou_5=round(np.mean([v for v in self.log["val"]["top5_iou_0.5"]]), 5),
+            val_topk_iou_1=round(np.mean([v for v in self.log["val"]["topk_iou_0.1"]]), 5),
+            val_topk_iou_25=round(np.mean([v for v in self.log["val"]["topk_iou_0.25"]]), 5),
+            val_topk_iou_5=round(np.mean([v for v in self.log["val"]["topk_iou_0.5"]]), 5),
             val_max_iou_1=round(np.mean([v for v in self.log["val"]["max_iou_0.1"]]), 5),
             val_max_iou_25=round(np.mean([v for v in self.log["val"]["max_iou_0.25"]]), 5),
             val_max_iou_5=round(np.mean([v for v in self.log["val"]["max_iou_0.5"]]), 5),
@@ -908,9 +860,9 @@ class Solver():
             upper_iou_1=round(self.best["upper_iou_0.1"], 5),
             upper_iou_25=round(self.best["upper_iou_0.25"], 5),
             upper_iou_5=round(self.best["upper_iou_0.5"], 5),
-            top5_iou_1=round(self.best["top5_iou_0.1"], 5),
-            top5_iou_25=round(self.best["top5_iou_0.25"], 5),
-            top5_iou_5=round(self.best["top5_iou_0.5"], 5),
+            topk_iou_1=round(self.best["topk_iou_0.1"], 5),
+            topk_iou_25=round(self.best["topk_iou_0.25"], 5),
+            topk_iou_5=round(self.best["topk_iou_0.5"], 5),
             rec_iou_1=round(self.best["rec_iou_0.1"], 5),
             rec_iou_25=round(self.best["rec_iou_0.25"], 5),
             rec_iou_5=round(self.best["rec_iou_0.5"], 5)

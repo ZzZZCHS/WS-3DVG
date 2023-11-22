@@ -1,4 +1,5 @@
 .idea
+.gitignore
 # data/*
 
 # dataset
@@ -37,9 +38,3 @@ ignore/
 *.swp
 
 nouse
-__pycache__
-*3dvg_trans*
-*vqa*
-Dataprocessing
-count_dataset_number.py
-*visual_question_answering*

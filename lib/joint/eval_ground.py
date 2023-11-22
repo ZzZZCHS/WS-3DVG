@@ -11,7 +11,6 @@ import sys
 import os
 
 # sys.path.append(os.path.join(os.getcwd(), "lib"))  # HACK add the lib folder
-from utils.nn_distance import nn_distance, huber_loss
 from lib.ap_helper.ap_helper_fcos import parse_predictions
 from utils.box_util import get_3d_box, get_3d_box_batch, box3d_iou
 import torch.nn.functional as F
@@ -40,9 +39,9 @@ def construct_bbox_corners(center, box_size):
     y_corners = [sy / 2, -sy / 2, -sy / 2, sy / 2, sy / 2, -sy / 2, -sy / 2, sy / 2]
     z_corners = [sz / 2, sz / 2, sz / 2, sz / 2, -sz / 2, -sz / 2, -sz / 2, -sz / 2]
     corners_3d = np.vstack([x_corners, y_corners, z_corners])
-    corners_3d[0, :] = corners_3d[0, :] + center[0];
-    corners_3d[1, :] = corners_3d[1, :] + center[1];
-    corners_3d[2, :] = corners_3d[2, :] + center[2];
+    corners_3d[0, :] = corners_3d[0, :] + center[0]
+    corners_3d[1, :] = corners_3d[1, :] + center[1]
+    corners_3d[2, :] = corners_3d[2, :] + center[2]
     corners_3d = np.transpose(corners_3d)
 
     return corners_3d
@@ -96,7 +95,7 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
         max_score = torch.max(data_dict["rec_score"], dim=-1, keepdim=True)[0] + 1.
         masked_pred_rec = rec_score * target_object_mask + (1-target_object_mask) * max_score
         pred_ref_rec = torch.argmin(masked_pred_rec, 1)
-        pred_ref_rec_top5 = torch.topk(masked_pred_rec, k=k, dim=1, largest=False)[1]
+        pred_ref_rec_topk = torch.topk(masked_pred_rec, k=k, dim=1, largest=False)[1]
 
     if use_cat_rand:
         target_ids = data_dict["target_ids"]
@@ -122,11 +121,11 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
     # masked_pred = data_dict['cluster_ref'] * candidate_mask + data_dict['cluster_ref'] * target_object_mask * 1e-7
     masked_pred = data_dict["cluster_ref"] * pred_mask1
     pred_ref = torch.argmax(masked_pred, 1)  # (B,)
-    pred_ref_top5 = torch.topk(masked_pred, k=k, dim=1)[1]
+    pred_ref_topk = torch.topk(masked_pred, k=k, dim=1)[1]
 
     if CONF.no_distill:
         # pred_ref = torch.empty(batch_size*len_num_max).long()
-        # pred_ref_top5 = torch.empty(batch_size*len_num_max, k).long()
+        # pred_ref_topk = torch.empty(batch_size*len_num_max, k).long()
         # object_feat = data_dict["bbox_feature"]  # bs, N, dim
         # lang_feat = data_dict["lang_emb"]  # bs*num, dim
         # if CONF.mil_type == "nce":
@@ -135,7 +134,7 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
         #             idx = i * len_num_max + j
         #             x = torch.matmul(lang_feat[idx], object_feat[i].t())
         #             pred_ref[idx] = torch.argmax(x, 0)
-        #             pred_ref_top5[idx, :] = torch.topk(x, k=k, dim=0)[1]
+        #             pred_ref_topk[idx, :] = torch.topk(x, k=k, dim=0)[1]
         #             # print(pred_ref[i])
         # else:
         #     lang_feat = lang_feat.unsqueeze(1).expand(-1, num_proposal, -1)
@@ -144,10 +143,10 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
         #             idx = i * len_num_max + j
         #             x = F.cosine_similarity(lang_feat[idx], object_feat[i])
         #             pred_ref[idx] = torch.argmax(x, 0)
-        #             pred_ref_top5[idx, :] = torch.topk(x, k=k, dim=0)[1]
+        #             pred_ref_topk[idx, :] = torch.topk(x, k=k, dim=0)[1]
         weights = data_dict["coarse_weights"]
         pred_ref = torch.argmax(weights, 1)
-        pred_ref_top5 = torch.topk(weights, k=k, dim=1)[1]
+        pred_ref_topk = torch.topk(weights, k=k, dim=1)[1]
 
 
     pred_heading = data_dict['pred_heading'].detach().cpu().numpy() # B,num_proposal
@@ -177,16 +176,16 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
     #print("pred_ref", pred_ref.shape, gt_ref.shape)
     pred_ref = pred_ref.reshape(batch_size, len_num_max)
 
-    top5_ious = []
-    pred_ref_top5 = pred_ref_top5.reshape(batch_size, len_num_max, -1)
+    topk_ious = []
+    pred_ref_topk = pred_ref_topk.reshape(batch_size, len_num_max, -1)
 
     if not is_eval:
         rec_ious = []
-        top5_rec_ious = []
+        topk_rec_ious = []
         pred_ref_rec = pred_ref_rec.reshape(batch_size, len_num_max)
-        pred_ref_rec_top5 = pred_ref_rec_top5.reshape(batch_size, len_num_max, -1)
+        pred_ref_rec_topk = pred_ref_rec_topk.reshape(batch_size, len_num_max, -1)
     if use_random:
-        top5_rand_ious = []
+        topk_rand_ious = []
         rand_ious = []
     if use_cat_rand:
         cat_rand_ious = []
@@ -237,9 +236,9 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
                 else:
                     others.append(data_dict["dep_indep_list"][i][j].item())
 
-                # top5
+                # topk
                 max_iou = 0
-                for pred_ref_idx in pred_ref_top5[i][j]:
+                for pred_ref_idx in pred_ref_topk[i][j]:
                     pred_center_ids = pred_center[i][pred_ref_idx]
                     pred_heading_ids = pred_heading[i][pred_ref_idx]
                     pred_box_size_ids = pred_box_size[i][pred_ref_idx]
@@ -247,7 +246,7 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
                     iou = eval_ref_one_sample(pred_bbox, gt_bbox)
                     if iou > max_iou:
                         max_iou = iou
-                top5_ious.append(max_iou)
+                topk_ious.append(max_iou)
 
                 # rand in cat
                 if use_cat_rand:
@@ -284,7 +283,7 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
                     rec_ious.append(rec_iou)
 
                     max_iou = 0.
-                    for pred_ref_rec_idx in pred_ref_rec_top5[i][j]:
+                    for pred_ref_rec_idx in pred_ref_rec_topk[i][j]:
                         pred_center_rec_ids = pred_center[i][pred_ref_rec_idx]
                         pred_heading_rec_ids = pred_heading[i][pred_ref_rec_idx]
                         pred_box_size_rec_ids = pred_box_size[i][pred_ref_rec_idx]
@@ -292,7 +291,7 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
                         iou = eval_ref_one_sample(pred_bbox_rec, gt_bbox)
                         if iou > max_iou:
                             max_iou = iou
-                    top5_rec_ious.append(max_iou)
+                    topk_rec_ious.append(max_iou)
 
                 # use best
                 if use_best:
@@ -327,7 +326,7 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
                         iou = eval_ref_one_sample(pred_bbox, gt_bbox)
                         if iou > max_iou:
                             max_iou = iou
-                    top5_rand_ious.append(max_iou)
+                    topk_rand_ious.append(max_iou)
 
 
     # lang
@@ -343,26 +342,26 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
     data_dict["ref_iou_0.25"] = np.array(ious)[np.array(ious) >= 0.25].shape[0] / np.array(ious).shape[0]
     data_dict["ref_iou_0.5"] = np.array(ious)[np.array(ious) >= 0.5].shape[0] / np.array(ious).shape[0]
 
-    data_dict["top5_iou"] = top5_ious
-    data_dict["top5_iou_0.1"] = np.array(top5_ious)[np.array(top5_ious) >= 0.1].shape[0] / np.array(top5_ious).shape[0]
-    data_dict["top5_iou_0.25"] = np.array(top5_ious)[np.array(top5_ious) >= 0.25].shape[0] / np.array(top5_ious).shape[0]
-    data_dict["top5_iou_0.5"] = np.array(top5_ious)[np.array(top5_ious) >= 0.5].shape[0] / np.array(top5_ious).shape[0]
-    # data_dict["top5_iou_0.1"] = 0.
-    # data_dict["top5_iou_0.25"] = 0.
-    # data_dict["top5_iou_0.5"] = 0.
+    data_dict["topk_iou"] = topk_ious
+    data_dict["topk_iou_0.1"] = np.array(topk_ious)[np.array(topk_ious) >= 0.1].shape[0] / np.array(topk_ious).shape[0]
+    data_dict["topk_iou_0.25"] = np.array(topk_ious)[np.array(topk_ious) >= 0.25].shape[0] / np.array(topk_ious).shape[0]
+    data_dict["topk_iou_0.5"] = np.array(topk_ious)[np.array(topk_ious) >= 0.5].shape[0] / np.array(topk_ious).shape[0]
+    # data_dict["topk_iou_0.1"] = 0.
+    # data_dict["topk_iou_0.25"] = 0.
+    # data_dict["topk_iou_0.5"] = 0.
 
     if not is_eval:
         data_dict["rec_iou"] = rec_ious
         data_dict["rec_iou_0.1"] = np.array(rec_ious)[np.array(rec_ious) >= 0.1].shape[0] / np.array(rec_ious).shape[0]
         data_dict["rec_iou_0.25"] = np.array(rec_ious)[np.array(rec_ious) >= 0.25].shape[0] / np.array(rec_ious).shape[0]
         data_dict["rec_iou_0.5"] = np.array(rec_ious)[np.array(rec_ious) >= 0.5].shape[0] / np.array(rec_ious).shape[0]
-        data_dict["top5_rec_iou"] = top5_rec_ious
+        data_dict["topk_rec_iou"] = topk_rec_ious
     else:
         data_dict["rec_iou"] = []
         data_dict["rec_iou_0.1"] = 0.
         data_dict["rec_iou_0.25"] = 0.
         data_dict["rec_iou_0.5"] = 0.
-        data_dict["top5_rec_iou"] = []
+        data_dict["topk_rec_iou"] = []
 
     if use_cat_rand:
         data_dict["rand_iou_0.1"] = np.array(cat_rand_ious)[np.array(cat_rand_ious) >= 0.1].shape[0] / np.array(cat_rand_ious).shape[0]
@@ -387,10 +386,10 @@ def get_eval(data_dict, config, reference, is_eval=False, use_lang_classifier=Fa
         data_dict["ref_iou_0.25"] = np.array(rand_ious)[np.array(rand_ious) >= 0.25].shape[0] / np.array(rand_ious).shape[0]
         data_dict["ref_iou_0.5"] = np.array(rand_ious)[np.array(rand_ious) >= 0.5].shape[0] / np.array(rand_ious).shape[0]
         data_dict["rand_iou"] = rand_ious
-        data_dict["top5_rand_iou"] = top5_rand_ious
+        data_dict["topk_rand_iou"] = topk_rand_ious
     else:
         data_dict["rand_iou"] = []
-        data_dict["top5_rand_iou"] = []
+        data_dict["topk_rand_iou"] = []
 
     if use_best:
         data_dict["ref_iou_0.1"] = np.array(best_ious)[np.array(best_ious) >= 0.1].shape[0] / np.array(best_ious).shape[0]

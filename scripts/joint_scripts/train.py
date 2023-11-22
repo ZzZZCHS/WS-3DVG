@@ -341,19 +341,6 @@ def get_scanrefer(args):
                 scanrefer_train_new_scene.append(data)
         scanrefer_train_new.append(scanrefer_train_new_scene)
 
-        #注意：new_scanrefer_eval_train实际上没用
-        # eval on train
-        # new_scanrefer_eval_train = []
-        # scanrefer_eval_train_new = []
-        # for scene_id in train_scene_list:
-        #     data = deepcopy(SCANREFER_TRAIN[0])
-        #     data["scene_id"] = scene_id
-        #     new_scanrefer_eval_train.append(data)
-        #     scanrefer_eval_train_new_scene = []
-        #     for i in range(args.lang_num_max):
-        #         scanrefer_eval_train_new_scene.append(data)
-        #     scanrefer_eval_train_new.append(scanrefer_eval_train_new_scene)
-
         new_scanrefer_eval_val = scanrefer_eval_val
         scanrefer_eval_val_new = []
         scanrefer_eval_val_new_scene = []
@@ -372,17 +359,6 @@ def get_scanrefer(args):
                 scanrefer_eval_val_new_scene = []
             scanrefer_eval_val_new_scene.append(data)
         scanrefer_eval_val_new.append(scanrefer_eval_val_new_scene)
-
-        # new_scanrefer_eval_val2 = []
-        # scanrefer_eval_val_new2 = []
-        # for scene_id in val_scene_list:
-        #     data = deepcopy(SCANREFER_VAL[0])
-        #     data["scene_id"] = scene_id
-        #     new_scanrefer_eval_val2.append(data)
-        #     scanrefer_eval_val_new_scene2 = []
-        #     for i in range(args.lang_num_max):
-        #         scanrefer_eval_val_new_scene2.append(data)
-        #     scanrefer_eval_val_new2.append(scanrefer_eval_val_new_scene2)
 
     print("scanrefer_train_new", len(scanrefer_train_new), len(scanrefer_train_new[0]))
     print("scanrefer_eval_new", len(scanrefer_eval_val_new))
@@ -408,7 +384,6 @@ def train(args):
     print("preparing data...")
     scanrefer_train, scanrefer_eval_val, all_scene_list, scanrefer_train_new, scanrefer_eval_val_new = get_scanrefer(args)
 
-    # 注意：eval_train_dataset实际上没用
     # dataloader
     train_dataset, train_dataloader = get_dataloader(args, scanrefer_train, scanrefer_train_new, all_scene_list, "train", DC, True, SCAN2CAD_ROTATION)
     # eval_train_dataset, eval_train_dataloader = get_dataloader(args, scanrefer_eval_train, scanrefer_eval_train_new, all_scene_list, "val", DC, False, shuffle=False)

@@ -332,13 +332,6 @@ class ReferenceDataset(Dataset):
                             lang_main[scene_id][object_id][ann_id]["first_obj"] = token_id + 1
                         else:
                             lang_main[scene_id][object_id][ann_id]["first_obj"] = token_id
-            # if object_name == "shower curtain":
-            #     print(tokens)
-            #     # print(CONF.TRAIN.MAX_GROUND_DES_LEN)
-            #     print(lang_main[scene_id][object_id][ann_id]["first_obj"])
-            #     print(tokens[lang_main[scene_id][object_id][ann_id]["first_obj"]])
-                # print(object_name)
-                # sys.exit()
             if pd == 1:
                 lang_main[scene_id][object_id][ann_id]["len"] = len(tokens)
 
@@ -347,10 +340,6 @@ class ReferenceDataset(Dataset):
             label[scene_id][object_id][ann_id] = labels
             lang_main[scene_id][object_id][ann_id]["main"] = main_embeddings
 
-            # masks[scene_id][object_id][ann_id]['attr_masks'] = attr_mask_list
-            # masks[scene_id][object_id][ann_id]['attr_masks_num'] = attribute_mask_num
-            # masks[scene_id][object_id][ann_id]['rel_masks'] = rel_mask_list
-            # masks[scene_id][object_id][ann_id]['rel_masks_num'] = relation_mask_num
             masks[scene_id][object_id][ann_id]['all_masks'] = all_mask_list
             masks[scene_id][object_id][ann_id]['all_masks_num'] = all_mask_num
 

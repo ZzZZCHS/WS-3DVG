@@ -4,17 +4,11 @@
 # LICENSE file in the root directory of this source tree.
 
 import torch
-import torch.nn as nn
-import numpy as np
-import sys
-import os
 
 from lib.configs.config import CONF
-from .loss_detection import compute_vote_loss, compute_objectness_loss, compute_box_loss, compute_box_and_sem_cls_loss
-from .loss_captioning import compute_cap_loss
+from .loss_detection import compute_objectness_loss
 from .loss_grounding import compute_reference_loss, compute_lang_classification_loss
 from .loss_reconstruct import reconstruct_loss, weakly_supervised_loss, reconstruct_score
-from .loss_contra import contra_loss
 from .mil import MILNCELoss, MILMARGINLoss
 
 FAR_THRESHOLD = 0.3
@@ -55,25 +49,14 @@ def get_joint_loss(data_dict, config, is_eval=False):
     if not is_eval:
         rec_word_logits = data_dict["rec_word_logits"]
         gt_idx = data_dict["ground_lang_ids_list"]
-        # rec_word_feat = data_dict["rec_word_feat"]
-        # ori_feat = data_dict["enc_lang_feat"]
-        # ori_feat = data_dict["ground_lang_feat_list"]
         masks_list = data_dict["all_masks_list"]
-        # masks_list = data_dict["rand_masks_list"]
         target_ids = data_dict["target_ids"].flatten(0, 1)
         all_scores = data_dict["cluster_ref"]
-        # target_ids = data_dict["target_ids"].resize(*target_obj_scores.shape)
-        # print(rec_word_logits.shape, gt_idx.shape, masks_list.shape, target_obj_scores.shape)
         num_target = target_ids.shape[1]
         rec_score = torch.zeros(target_ids.shape).to(target_ids.device)
-        # zeros = torch.zeros_like(target_ids).to(target_ids.device).float()
-        # all_scores = all_scores.softmax(dim=-1)
-        # all_scores = all_scores.scatter(dim=1, src=zeros, index=target_ids)
         for i in range(num_target):
             rec_word_logits_i = rec_word_logits[:, :, i, :, :]
-            # rec_word_feat_i = rec_word_feat[:, :, i, :, :]
             rec_score[:, i] = reconstruct_score(rec_word_logits_i, gt_idx, masks_list, len_num_mask)
-            # rec_score[:, i] = reconstruct_score(rec_word_feat_i, ori_feat, masks_list)
         data_dict["rec_score"] = rec_score
         weak_loss = weakly_supervised_loss(rec_score, all_scores, data_dict, len_num_mask, CONF)
         rec_loss = reconstruct_loss(rec_score, data_dict["epoch"], len_num_mask)
@@ -103,17 +86,8 @@ def get_joint_loss(data_dict, config, is_eval=False):
             loss += data_dict["rec_loss"]
         if not CONF.no_distill and data_dict["epoch"] >= 0:
             loss += data_dict["weak_loss"]
-    # if use_lang_classifier:
-    #     loss += data_dict["lang_loss"]
 
     data_dict["loss"] = loss
-
-    # data_dict["rec_loss"] = torch.zeros(1)[0].cuda()
-    # data_dict["weak_loss"] = torch.zeros(1)[0].cuda()
-    # data_dict["lang_loss"] = torch.zeros(1)[0].cuda()
-    # data_dict["contra_loss"] = torch.zeros(1)[0].cuda()
-    # data_dict["grounding_loss"] = torch.zeros(1)[0].cuda()
-    # data_dict["loss"] = MILNCELoss(data_dict)
 
     return data_dict
 

@@ -385,8 +385,8 @@ def write_bbox(scene_bbox, out_filename):
     
     mesh_list = trimesh.util.concatenate(scene.dump())
     # save to ply file    
-    trimesh.io.export.export_mesh(mesh_list, out_filename, file_type='ply')
-    
+    # trimesh.io.export.export_mesh(mesh_list, out_filename, file_type='ply')
+    mesh_list.export(out_filename)
     return
 
 def write_oriented_bbox(scene_bbox, out_filename):
@@ -490,48 +490,53 @@ def write_lines_as_cylinders(pcl, filename, rad=0.005, res=64):
 # Testing
 # ----------------------------------------
 if __name__ == '__main__':
-    print('running some tests')
-    
-    ############
-    ## Test "write_lines_as_cylinders"
-    ############
-    pcl = np.random.rand(32, 2, 3)
-    write_lines_as_cylinders(pcl, 'point_connectors')
-    input()
-    
-   
-    scene_bbox = np.zeros((1,7))
-    scene_bbox[0,3:6] = np.array([1,2,3]) # dx,dy,dz
-    scene_bbox[0,6] = np.pi/4 # 45 degrees 
-    write_oriented_bbox(scene_bbox, 'single_obb_45degree.ply')
-    ############
-    ## Test point_cloud_to_bbox 
-    ############
-    pcl = np.random.rand(32, 16, 3)
-    pcl_bbox = point_cloud_to_bbox(pcl)
-    assert pcl_bbox.shape == (32, 6)
-    
-    pcl = np.random.rand(16, 3)
-    pcl_bbox = point_cloud_to_bbox(pcl)    
-    assert pcl_bbox.shape == (6,)
-    
-    ############
-    ## Test corner distance
-    ############
-    crnr1 = np.array([[2.59038660e+00, 8.96107932e-01, 4.73305349e+00],
- [4.12281644e-01, 8.96107932e-01, 4.48046631e+00],
- [2.97129656e-01, 8.96107932e-01, 5.47344275e+00],
- [2.47523462e+00, 8.96107932e-01, 5.72602993e+00],
- [2.59038660e+00, 4.41155793e-03, 4.73305349e+00],
- [4.12281644e-01, 4.41155793e-03, 4.48046631e+00],
- [2.97129656e-01, 4.41155793e-03, 5.47344275e+00],
- [2.47523462e+00, 4.41155793e-03, 5.72602993e+00]])
-    crnr2 = crnr1
+    # print('running some tests')
+    #
+    # ############
+    # ## Test "write_lines_as_cylinders"
+    # ############
+    # pcl = np.random.rand(32, 2, 3)
+    # write_lines_as_cylinders(pcl, 'point_connectors')
+    # input()
+    #
+    #
+    # scene_bbox = np.zeros((1,7))
+    # scene_bbox[0,3:6] = np.array([1,2,3]) # dx,dy,dz
+    # scene_bbox[0,6] = np.pi/4 # 45 degrees
+    # write_oriented_bbox(scene_bbox, 'single_obb_45degree.ply')
+    # ############
+    # ## Test point_cloud_to_bbox
+    # ############
+    # pcl = np.random.rand(32, 16, 3)
+    # pcl_bbox = point_cloud_to_bbox(pcl)
+    # assert pcl_bbox.shape == (32, 6)
+    #
+    # pcl = np.random.rand(16, 3)
+    # pcl_bbox = point_cloud_to_bbox(pcl)
+    # assert pcl_bbox.shape == (6,)
+    #
+    # ############
+    # ## Test corner distance
+    # ############
+    # crnr1 = np.array([[2.59038660e+00, 8.96107932e-01, 4.73305349e+00],
+    # [4.12281644e-01, 8.96107932e-01, 4.48046631e+00],
+    # [2.97129656e-01, 8.96107932e-01, 5.47344275e+00],
+    # [2.47523462e+00, 8.96107932e-01, 5.72602993e+00],
+    # [2.59038660e+00, 4.41155793e-03, 4.73305349e+00],
+    # [4.12281644e-01, 4.41155793e-03, 4.48046631e+00],
+    # [2.97129656e-01, 4.41155793e-03, 5.47344275e+00],
+    # [2.47523462e+00, 4.41155793e-03, 5.72602993e+00]])
+    # crnr2 = crnr1
+    #
+    # print(bbox_corner_dist_measure(crnr1, crnr2))
+    #
+    #
+    #
+    # print('tests PASSED')
+    import json
+    tmp = json.load(open("scannet_attributes.json", "r"))
+    scene_bbox = np.array(tmp["scene0000_00"]["locs"])
+    write_bbox(scene_bbox, "tmp.ply")
 
-    print(bbox_corner_dist_measure(crnr1, crnr2))
-    
-    
-    
-    print('tests PASSED')
     
     

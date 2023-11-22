@@ -11,9 +11,7 @@ from models.base_module.lang_module import LangModule
 from models.proposal_module.proposal_module_fcos import ProposalModule
 from models.proposal_module.relation_module import RelationModule
 from models.refnet.match_module import MatchModule
-from models.capnet.caption_module import SceneCaptionModule, TopDownSceneCaptionModule
 from models.recnet.reconstruct_module import ReconstructModule
-from models.recnet.contra_module import ContraModule
 from models.groupfree import GroupFreeDetector
 
 from lib.ap_helper.ap_helper_fcos import parse_predictions
@@ -156,9 +154,6 @@ class JointNet(nn.Module):
         return data_dict
 
     def divide_proposals(self, data_dict):
-        # att_weight = data_dict["contra_att_weight"]
-        # len_num_max = att_weight.shape[1]
-        # att_weight = att_weight.flatten(0, 1)
 
         bbox_feature = data_dict["bbox_feature"]  # bs, num_proposal, hidden_dim
         sem_cls_scores = data_dict["sem_cls_scores"]  # bs, num_proposal, 18
@@ -177,7 +172,6 @@ class JointNet(nn.Module):
 
         lang_score = lang_score.unsqueeze(1).expand(-1, num_proposal, -1)
         cls_sim_score = F.cosine_similarity(sem_cls_scores, lang_score, dim=-1)
-        # print(cls_sim_score[0])
 
         lang_feat = data_dict["lang_emb"].reshape(bs, len_num_max, hidden_dim)  # bs, len_num_max, dim
         mil_score = torch.matmul(lang_feat, data_dict["bbox_feature"].permute(0, 2, 1))  # bs, len_num_max, num_proposal
@@ -200,87 +194,31 @@ class JointNet(nn.Module):
         non_objectness_masks = (objectness_preds_batch == 0).bool()  # bs, num_proposal
         non_objectness_masks = non_objectness_masks.unsqueeze(1).expand(-1, len_num_max, -1).flatten(0, 1)
         weights.masked_fill_(non_objectness_masks, -float('inf'))
-        # pred_by_target_cls.masked_fill_(non_objectness_masks, -float('inf'))
-        # att_weight.masked_fill_(non_objectness_masks, 0.)
-        # data_dict["nms_mask"] = self.get_nms_masks(data_dict, len_num_max)
-        # # print(data_dict["nms_mask"].shape)
-        # weights.masked_fill_(data_dict["nms_mask"] == 0, -float('inf'))
 
         sorted_ids = torch.sort(weights, descending=True, dim=1)[1]
         target_ids = sorted_ids[:, :self.num_target]
-        # other_ids = sorted_ids[:, self.num_target:]
         target_feat = torch.gather(bbox_feature, 1, target_ids.unsqueeze(-1).expand(-1, -1, hidden_dim))  # bs*len_num_max, num_target, hiddem_dim
-        # other_feat = torch.gather(bbox_feature, 1, other_ids.unsqueeze(-1).expand(-1, -1, hidden_dim))
 
         data_dict["target_ids"] = target_ids.reshape(bs, len_num_max, self.num_target)
-        # data_dict["other_ids"] = other_ids.reshape(bs, len_num_max, self.num_other)
         data_dict["target_feat"] = target_feat.reshape(bs, len_num_max, self.num_target, hidden_dim)
-        # data_dict["other_feat"] = other_feat.reshape(bs, len_num_max, self.num_other, hidden_dim)
 
     def reconstruct(self, data_dict):
         target_feat = data_dict["target_feat"]  # bs, len_num_max, num_target, dim
-        # other_feat = data_dict["other_feat"]
-        # target_ids = data_dict["target_ids"]  # bs, len_num_max, num_target
-        # other_ids = data_dict["other_ids"]
-        # words_feat = data_dict["ground_lang_feat_list"]
         words_feat = self.lang.masked_lang_feat(data_dict)
-        # masks_list = data_dict["all_masks_list"]
         bs, len_num_max, _, hidden_dim = target_feat.shape
         max_des_len = words_feat.shape[2]
         masks_list = torch.empty(bs, len_num_max, max_des_len).to(target_feat.device)
         masks_list = masks_list.bernoulli_(p=0.3)
         masks_list = masks_list.masked_fill(data_dict["all_masks_list"][:, :, :max_des_len] == 2, 2)
         data_dict["rand_masks_list"] = masks_list
-        # masks_list = masks_list[:, :, :max_des_len]
-        # xyz = data_dict['pred_center'].unsqueeze(1).expand(-1, len_num_max, -1, -1).flatten(0, 1)  # bs * len_num_max, num_proposal, 3
-        # target_ids = target_ids.flatten(0, 1)  # bs*len_num_max, num_target
-        # other_ids = other_ids.flatten(0, 1)
-        # target_xyzs = torch.gather(xyz, dim=1, index=target_ids.unsqueeze(-1).expand(-1, -1, 3))  # bs*len_num_max, num_target, 3
-        # other_xyzs = torch.gather(xyz, dim=1, index=other_ids.unsqueeze(-1).expand(-1, -1, 3))
-        # other_feat = other_feat.reshape(bs*len_num_max, self.num_other, hidden_dim)
-        # nms_masks = self.get_nms_masks(data_dict, len_num_max)
         device = target_feat.device
         word_logits = torch.zeros(bs, len_num_max, self.num_target, max_des_len, self.vocab_size).to(device)
-        # rec_word_feat = torch.zeros(bs, len_num_max, self.num_target, max_des_len, 128).to(device)
         for i in range(self.num_target):
-            # center_xyz = target_xyzs[:, i:i+1, :]  # bs*len_num_max, 1, 3
-            # dist = n_distance(center_xyz, other_xyzs)  # bs*len_num_max, num_other
-            # # dist = n_distance(center_xyz, xyz)  # bs*len_num_max, num_proposal
-            # # dist = dist.masked_fill(nms_masks == 0, 0.) + 10. * dist.masked_fill(nms_masks == 1, 0)
-            # # dist = torch.gather(dist, dim=1, index=other_ids)
-            # min_dist_ids = torch.topk(dist, self.num_rec_other, largest=False)[1]  # bs*len_num_max, num_rec_other
-            # min_other_feat = torch.gather(other_feat, 1, min_dist_ids.unsqueeze(-1).expand(-1, -1, hidden_dim)).reshape(bs, len_num_max, self.num_rec_other, hidden_dim)
-            # object_feat = torch.cat((target_feat[:, :, i:i + 1, :], min_other_feat), dim=2)
             object_feat = target_feat[:, :, i:i + 1, :]
             word_logit = self.recnet(words_feat, object_feat, masks_list)  # bs, len_num_max, max_des_len, vocab_size
             word_logits[:, :, i, :, :] = word_logit
-            # rec_word_feat[:, :, i, :, :] = self.recnet(words_feat, object_feat, masks_list)
 
         data_dict["rec_word_logits"] = word_logits
-        # data_dict["rec_word_feat"] = rec_word_feat
-
-    def get_nms_masks(self, data_dict, len_num_max):
-        POST_DICT = {
-            "remove_empty_box": True,
-            "use_3d_nms": True,
-            "nms_iou": 0.25,
-            "use_old_type_nms": False,
-            "cls_nms": True,
-            "per_class_proposal": True,
-            "conf_thresh": 0.05,
-            "dataset_config": self.dataset_config
-        }
-
-        parse_predictions(data_dict, POST_DICT)
-        nms_masks = torch.LongTensor(data_dict["pred_mask"]).cuda()
-        # print("nms_mask", nms_masks.float().sum(-1).mean())
-        # obj_masks = torch.argmax(data_dict["objectness_scores"], 2).long()
-        obj_masks = data_dict["objectness_pred"]
-        # print("obj_mask", obj_masks.float().sum(-1).mean())
-        nms_masks = nms_masks * obj_masks
-        # print("all_mask", nms_masks.float().sum(-1).mean())
-        nms_masks = nms_masks.unsqueeze(1).expand(-1, len_num_max, -1).flatten(0, 1)
-        return nms_masks
 
 
 def n_distance(center, points):

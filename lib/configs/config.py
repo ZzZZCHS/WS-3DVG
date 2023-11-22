@@ -30,7 +30,7 @@ class Config():
 
         self.parser.add_argument("--batch_size", type=int, help="batch size", default=4)
         self.parser.add_argument("--val_batch_size", type=int, help="val batch size", default=1)
-        self.parser.add_argument("--epoch", type=int, help="number of epochs", default=15)
+        self.parser.add_argument("--epoch", type=int, help="number of epochs", default=10)
         self.parser.add_argument("--verbose", type=int, help="iterations of showing verbose", default=50)
         self.parser.add_argument("--val_step", type=int, help="iterations of validating", default=300)
         self.parser.add_argument("--lr", type=float, help="learning rate", default=1e-3) # 12 * 1e-3
@@ -115,7 +115,7 @@ class Config():
         # path
         CONF.PATH = EasyDict()
         CONF.PATH.BASE = ROOT_DIR
-        CONF.PATH.CLUSTER = "" # TODO: change this
+        CONF.PATH.CLUSTER = ""
         CONF.PATH.DATA = os.path.join(CONF.PATH.BASE, "data")
         CONF.PATH.SCANNET = os.path.join(CONF.PATH.DATA, "scannet")
         CONF.PATH.LIB = os.path.join(CONF.PATH.BASE, "lib")
@@ -132,14 +132,11 @@ class Config():
         CONF.PATH.SCANNET_META = os.path.join(CONF.PATH.SCANNET, "meta_data")
         CONF.PATH.SCANNET_DATA = os.path.join(CONF.PATH.SCANNET, "scannet_data")
 
-        # Scan2CAD
-        # CONF.PATH.SCAN2CAD = os.path.join(CONF.PATH.DATA, "Scan2CAD_dataset") # TODO change this
-
         # data
-        CONF.SCANNET_DIR = CONF.PATH.DATA + "/scannet/scans" # TODO change this
-        CONF.SCANNET_FRAMES_ROOT = CONF.PATH.DATA + "/scanrefer/frames_square/" # TODO change this
-        CONF.PROJECTION = CONF.PATH.DATA + "/multiview_projection_scanrefer" # TODO change this
-        CONF.ENET_FEATURES_ROOT = CONF.PATH.DATA + "/scanrefer/enet_features" # TODO change this
+        CONF.SCANNET_DIR = CONF.PATH.DATA + "/scannet/scans"  # TODO change this
+        CONF.SCANNET_FRAMES_ROOT = CONF.PATH.DATA + "/scanrefer/frames_square/"  # TODO change this
+        CONF.PROJECTION = CONF.PATH.DATA + "/multiview_projection_scanrefer"  # TODO change this
+        CONF.ENET_FEATURES_ROOT = CONF.PATH.DATA + "/scanrefer/enet_features"  # TODO change this
 
         CONF.ENET_FEATURES_SUBROOT = os.path.join(CONF.ENET_FEATURES_ROOT, "{}") # scene_id
         CONF.ENET_FEATURES_PATH = os.path.join(CONF.ENET_FEATURES_SUBROOT, "{}.npy") # frame_id
