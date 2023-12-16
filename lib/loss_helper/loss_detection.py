@@ -13,7 +13,7 @@ import os
 from utils.nn_distance import nn_distance, huber_loss
 from .loss import SoftmaxRankingLoss
 from utils.box_util import get_3d_box, get_3d_box_batch, box3d_iou, box3d_iou_batch
-from lib.configs.config import CONF
+from config.config import CONF
 from utils.box_util import rotz_batch_pytorch
 
 FAR_THRESHOLD = 0.3
@@ -111,7 +111,7 @@ def compute_objectness_loss(data_dict):
     # Set assignment
     object_assignment = ind1  # (B,K) with values in 0,1,...,K2-1
 
-    return None, objectness_label, objectness_mask, object_assignment
+    return objectness_label, objectness_mask, object_assignment
 
 
 def compute_box_loss(data_dict, config):

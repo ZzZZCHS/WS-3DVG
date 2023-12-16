@@ -5,7 +5,8 @@ import argparse
 import yaml
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.dirname(os.path.dirname(BASE_DIR))
+ROOT_DIR = os.path.dirname(BASE_DIR)
+
 
 class Config():
     def __init__(self):
@@ -30,7 +31,7 @@ class Config():
 
         self.parser.add_argument("--batch_size", type=int, help="batch size", default=4)
         self.parser.add_argument("--val_batch_size", type=int, help="val batch size", default=1)
-        self.parser.add_argument("--epoch", type=int, help="number of epochs", default=10)
+        self.parser.add_argument("--epoch", type=int, help="number of epochs", default=20)
         self.parser.add_argument("--verbose", type=int, help="iterations of showing verbose", default=50)
         self.parser.add_argument("--val_step", type=int, help="iterations of validating", default=300)
         self.parser.add_argument("--lr", type=float, help="learning rate", default=1e-3) # 12 * 1e-3
@@ -202,5 +203,6 @@ class Config():
             "query_points_xyz", "query_points_feature", "query_points_sample_inds",
             "seed_inds"
         ]
+
 
 CONF = Config().get_config()

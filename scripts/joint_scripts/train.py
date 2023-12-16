@@ -21,14 +21,12 @@ sys.path.append(os.path.join(os.getcwd())) # HACK add the root folder
 from data.scannet.model_util_scannet import ScannetDatasetConfig, SunToScannetDatasetConfig
 from data.sunrgbd.model_util_sunrgbd import SunrgbdDatasetConfig
 from lib.joint.dataset import ScannetReferenceDataset
-from lib.joint.solver_3djcg import Solver
-from lib.configs.config import CONF
+from lib.joint.solver import Solver
+from config.config import CONF
 from models.jointnet.jointnet import JointNet
 from scripts.utils.AdamW import AdamW
 from scripts.utils.script_utils import set_params_lr_dict
 from torch.nn.parallel import DistributedDataParallel
-
-from crash_on_ipy import *
 
 # SCANREFER_DUMMY = json.load(open(os.path.join(CONF.PATH.DATA, "ScanRefer_dummy.json")))
 
@@ -41,7 +39,6 @@ SCAN2CAD_ROTATION = None # json.load(open(os.path.join(CONF.PATH.SCAN2CAD, "scan
 # constants
 # DC = SunToScannetDatasetConfig()
 DC = ScannetDatasetConfig() if CONF.pretrain_data == "scannet" else SunToScannetDatasetConfig()
-import crash_on_ipy
 
 
 def get_dataloader(args, scanrefer, scanrefer_new, all_scene_list, split, config, augment, shuffle=True,
@@ -87,6 +84,7 @@ def get_dataloader(args, scanrefer, scanrefer_new, all_scene_list, split, config
 
     return dataset, dataloader
 
+
 def get_model(args, dataset):
     # initiate model
     # input_channels = int(args.use_multiview) * 128 + int(args.use_normal) * 3 + int(args.use_color) * 3 + int(not args.no_height)
@@ -114,33 +112,7 @@ def get_model(args, dataset):
         dataset_config=DC,
         args=args
     )
-    """
-    # load pretrained model
-    print("loading pretrained VoteNet...")
 
-    pretrained_name = "PRETRAIN_VOTENET_XYZ"
-    if args.use_color: pretrained_name += "_COLOR"
-    if args.use_multiview: pretrained_name += "_MULTIVIEW"
-    if args.use_normal: pretrained_name += "_NORMAL"
-
-    if args.use_pretrained is None:
-        pretrained_path = os.path.join(CONF.PATH.PRETRAINED, pretrained_name, "model.pth")
-    else:
-        pretrained_path = os.path.join(CONF.PATH.BASE, args.use_pretrained, "model_last.pth")
-    print("pretrained_path", pretrained_path, flush=True)
-    """
-    """
-    pretrained_param = torch.load(pretrained_path)
-    if 'model_state_dict' in pretrained_param:  # saved optimizer
-        pretrained_param = pretrained_param['model_state_dict']
-    if 'module' in pretrained_param:  # distrbuted dataparallel
-        pretrained_param = pretrained_param['module']
-    # print('loading from pretrained param: ', pretrained_param.keys())  # output torch.load
-
-
-    output = model.load_state_dict(pretrained_param, strict=False)
-    print('load Result: ', output)
-    """
     if args.pretrain_model_on:
         if args.pretrain_model == "groupfree":
             print("loading predtrained GroupFree...")
@@ -188,9 +160,7 @@ def get_solver(args, dataset, dataloader):
         # 'recnet': {'lr': 0.003}
     }
     params = set_params_lr_dict(model, base_lr=args.lr, weight_decay=args.wd, weight_dict=weight_dict)
-    # params = model.parameters()
     optimizer = AdamW(params, lr=args.lr, weight_decay=args.wd, amsgrad=args.amsgrad)
-    #optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
 
     checkpoint_best = None
 
@@ -277,125 +247,109 @@ def get_scannet_scene_list(split):
 
 def get_scanrefer(args):
     if args.dataset == "ScanRefer":
-        scanrefer_train = json.load(open(os.path.join(CONF.PATH.DATA, "Masked_ScanRefer_filtered_train.json")))
-        # scanrefer_eval_train = json.load(open(os.path.join(CONF.PATH.DATA, "Masked_ScanRefer_filtered_train.json")))
-        scanrefer_eval_val = json.load(open(os.path.join(CONF.PATH.DATA, "ScanRefer_filtered_val.json")))
+        annos_train = json.load(open(os.path.join(CONF.PATH.DATA, "scanrefer", "Masked_ScanRefer_filtered_train.json")))
+        annos_val = json.load(open(os.path.join(CONF.PATH.DATA, "scanrefer", "ScanRefer_filtered_val.json")))
     elif args.dataset == "nr3d":
-        scanrefer_train = json.load(open(os.path.join(CONF.PATH.DATA, "nr3d", "masked_nr3d_train.json")))
-        # scanrefer_eval_train = json.load(open(os.path.join(CONF.PATH.DATA, "nr3d_train.json")))
-        scanrefer_eval_val = json.load(open(os.path.join(CONF.PATH.DATA, "nr3d", "masked_nr3d_test.json")))
+        annos_train = json.load(open(os.path.join(CONF.PATH.DATA, "nr3d", "masked_nr3d_train.json")))
+        annos_val = json.load(open(os.path.join(CONF.PATH.DATA, "nr3d", "masked_nr3d_test.json")))
     elif args.dataset == "sr3d":
-        scanrefer_train = json.load(open(os.path.join(CONF.PATH.DATA, "sr3d", "masked_sr3d_train.json")))
-        # scanrefer_eval_train = json.load(open(os.path.join(CONF.PATH.DATA, "nr3d_train.json")))
-        scanrefer_eval_val = json.load(open(os.path.join(CONF.PATH.DATA, "sr3d", "masked_sr3d_test.json")))
+        annos_train = json.load(open(os.path.join(CONF.PATH.DATA, "sr3d", "masked_sr3d_train.json")))
+        annos_val = json.load(open(os.path.join(CONF.PATH.DATA, "sr3d", "masked_sr3d_test.json")))
     else:
         raise ValueError("Invalid dataset.")
 
     if args.debug:
-        scanrefer_train = [scanrefer_train[0]]
-        # scanrefer_eval_train = [SCANREFER_TRAIN[0]]
-        scanrefer_eval_val = [scanrefer_train[0]]
+        annos_train = [annos_train[0]]
+        annos_val = [annos_train[0]]
 
     if args.no_caption and args.no_reference:
         train_scene_list = get_scannet_scene_list("train")
         val_scene_list = get_scannet_scene_list("val")
 
-        new_scanrefer_train = []
+        new_annos_train = []
         for scene_id in train_scene_list:
-            data = deepcopy(scanrefer_train[0])
+            data = deepcopy(annos_train[0])
             data["scene_id"] = scene_id
-            new_scanrefer_train.append(data)
+            new_annos_train.append(data)
 
-        # new_scanrefer_eval_train = []
-        # for scene_id in train_scene_list:
-        #     data = deepcopy(SCANREFER_TRAIN[0])
-        #     data["scene_id"] = scene_id
-        #     new_scanrefer_eval_train.append(data)
-
-        new_scanrefer_eval_val = []
+        new_annos_val = []
         for scene_id in val_scene_list:
-            data = deepcopy(scanrefer_train[0])
+            data = deepcopy(annos_train[0])
             data["scene_id"] = scene_id
-            new_scanrefer_eval_val.append(data)
+            new_annos_val.append(data)
     else:
         # get initial scene list
-        train_scene_list = sorted(list(set([data["scene_id"] for data in scanrefer_train])))
-        val_scene_list = sorted(list(set([data["scene_id"] for data in scanrefer_eval_val])))
+        train_scene_list = sorted(list(set([data["scene_id"] for data in annos_train])))
+        val_scene_list = sorted(list(set([data["scene_id"] for data in annos_val])))
 
         # filter data in chosen scenes
-        new_scanrefer_train = []
-        scanrefer_train_new = []
-        scanrefer_train_new_scene = []
+        new_annos_train = []
+        annos_train_new = []
+        annos_train_new_scene = []
         scene_id = ""
-        for data in scanrefer_train:
+        for data in annos_train:
             if data["scene_id"] in train_scene_list:
-                new_scanrefer_train.append(data)
+                new_annos_train.append(data)
                 if scene_id != data["scene_id"]:
                     scene_id = data["scene_id"]
-                    if len(scanrefer_train_new_scene) > 0:
-                        scanrefer_train_new.append(scanrefer_train_new_scene)
-                    scanrefer_train_new_scene = []
-                if len(scanrefer_train_new_scene) >= args.lang_num_max:
-                    scanrefer_train_new.append(scanrefer_train_new_scene)
-                    scanrefer_train_new_scene = []
-                scanrefer_train_new_scene.append(data)
-        scanrefer_train_new.append(scanrefer_train_new_scene)
+                    if len(annos_train_new_scene) > 0:
+                        annos_train_new.append(annos_train_new_scene)
+                    annos_train_new_scene = []
+                if len(annos_train_new_scene) >= args.lang_num_max:
+                    annos_train_new.append(annos_train_new_scene)
+                    annos_train_new_scene = []
+                annos_train_new_scene.append(data)
+        annos_train_new.append(annos_train_new_scene)
 
-        new_scanrefer_eval_val = scanrefer_eval_val
-        scanrefer_eval_val_new = []
-        scanrefer_eval_val_new_scene = []
+        new_annos_val = annos_val
+        annos_val_new = []
+        annos_val_new_scene = []
         scene_id = ""
-        for data in scanrefer_eval_val:
+        for data in annos_val:
             # if data["scene_id"] not in scanrefer_val_new:
             # scanrefer_val_new[data["scene_id"]] = []
             # scanrefer_val_new[data["scene_id"]].append(data)
             if scene_id != data["scene_id"]:
                 scene_id = data["scene_id"]
-                if len(scanrefer_eval_val_new_scene) > 0:
-                    scanrefer_eval_val_new_scene.append(scanrefer_eval_val_new_scene)
-                scanrefer_eval_val_new_scene = []
-            if len(scanrefer_eval_val_new_scene) >= args.lang_num_max:
-                scanrefer_eval_val_new.append(scanrefer_eval_val_new_scene)
-                scanrefer_eval_val_new_scene = []
-            scanrefer_eval_val_new_scene.append(data)
-        scanrefer_eval_val_new.append(scanrefer_eval_val_new_scene)
+                if len(annos_val_new_scene) > 0:
+                    annos_val_new_scene.append(annos_val_new_scene)
+                annos_val_new_scene = []
+            if len(annos_val_new_scene) >= args.lang_num_max:
+                annos_val_new.append(annos_val_new_scene)
+                annos_val_new_scene = []
+            annos_val_new_scene.append(data)
+        annos_val_new.append(annos_val_new_scene)
 
-    print("scanrefer_train_new", len(scanrefer_train_new), len(scanrefer_train_new[0]))
-    print("scanrefer_eval_new", len(scanrefer_eval_val_new))
+    print("annos_train_new", len(annos_train_new), len(annos_train_new[0]))
+    print("annos_val_new", len(annos_val_new))
     sum = 0
-    for i in range(len(scanrefer_train_new)):
-        sum += len(scanrefer_train_new[i])
-        # print(len(scanrefer_train_new[i]))
-    # for i in range(len(scanrefer_val_new)):
-    #    print(len(scanrefer_val_new[i]))
+    for i in range(len(annos_train_new)):
+        sum += len(annos_train_new[i])
     print("sum", sum)  # 1418 363
 
     # all scanrefer scene
     all_scene_list = train_scene_list + val_scene_list
 
     print("using {} dataset".format(args.dataset))
-    print("train on {} samples from {} scenes".format(len(new_scanrefer_train), len(train_scene_list)))
-    print("eval on {} scenes from val".format(len(new_scanrefer_eval_val)))
+    print("train on {} samples from {} scenes".format(len(new_annos_train), len(train_scene_list)))
+    print("eval on {} scenes from val".format(len(new_annos_val)))
 
-    return new_scanrefer_train, new_scanrefer_eval_val, all_scene_list, scanrefer_train_new, scanrefer_eval_val_new
+    return new_annos_train, new_annos_val, all_scene_list, annos_train_new, annos_val_new
 
 def train(args):
     # init training dataset
     print("preparing data...")
-    scanrefer_train, scanrefer_eval_val, all_scene_list, scanrefer_train_new, scanrefer_eval_val_new = get_scanrefer(args)
+    annos_train, annos_val, all_scene_list, annos_train_new, annos_val_new = get_scanrefer(args)
 
     # dataloader
-    train_dataset, train_dataloader = get_dataloader(args, scanrefer_train, scanrefer_train_new, all_scene_list, "train", DC, True, SCAN2CAD_ROTATION)
-    # eval_train_dataset, eval_train_dataloader = get_dataloader(args, scanrefer_eval_train, scanrefer_eval_train_new, all_scene_list, "val", DC, False, shuffle=False)
-    eval_val_dataset, eval_val_dataloader = get_dataloader(args, scanrefer_eval_val, scanrefer_eval_val_new, all_scene_list, "val", DC, False, shuffle=False)
-    # eval_val_dataset2, eval_val_dataloader2 = get_dataloader(args, scanrefer_eval_val2, scanrefer_eval_val_new2, all_scene_list, "val", DC, False, shuffle=False)
+    train_dataset, train_dataloader = get_dataloader(args, annos_train, annos_train_new, all_scene_list, "train", DC, True, SCAN2CAD_ROTATION)
+    eval_val_dataset, eval_val_dataloader = get_dataloader(args, annos_val, annos_val_new, all_scene_list, "val", DC, False, shuffle=False)
 
     dataset = {
         "train": train_dataset,
         "eval": {
             # "train": eval_train_dataset,
             "val": eval_val_dataset,
-            # "val_scene": eval_val_dataset2
         }
     }
     dataloader = {
@@ -403,7 +357,6 @@ def train(args):
         "eval": {
             # "train": eval_train_dataloader,
             "val": eval_val_dataloader,
-            # "val_scene": eval_val_dataloader2
         }
     }
 

@@ -15,7 +15,7 @@ from lib.ap_helper.ap_helper_fcos import parse_predictions
 from utils.box_util import get_3d_box, get_3d_box_batch, box3d_iou
 import torch.nn.functional as F
 
-from lib.configs.config import CONF
+from config.config import CONF
 
 
 def eval_ref_one_sample(pred_bbox, gt_bbox):

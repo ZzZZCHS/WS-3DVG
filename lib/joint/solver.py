@@ -15,7 +15,7 @@ from tqdm import tqdm
 from tensorboardX import SummaryWriter
 from torch.optim.lr_scheduler import StepLR, MultiStepLR, CosineAnnealingLR
 
-from lib.configs.config import CONF
+from config.config import CONF
 from lib.loss_helper.loss_joint import get_joint_loss
 from lib.joint.eval_ground import get_eval as eval_ground
 from utils.eta import decode_eta

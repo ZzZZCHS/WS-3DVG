@@ -5,16 +5,11 @@
 
 import torch
 
-from lib.configs.config import CONF
+from config.config import CONF
 from .loss_detection import compute_objectness_loss
 from .loss_grounding import compute_reference_loss, compute_lang_classification_loss
 from .loss_reconstruct import reconstruct_loss, weakly_supervised_loss, reconstruct_score
 from .mil import MILNCELoss, MILMARGINLoss
-
-FAR_THRESHOLD = 0.3
-NEAR_THRESHOLD = 0.3
-GT_VOTE_FACTOR = 3  # number of GT votes per point
-OBJECTNESS_CLS_WEIGHTS = [0.2, 0.8]  # put larger weights on positive objectness
 
 
 def get_joint_loss(data_dict, config, is_eval=False):
@@ -29,15 +24,14 @@ def get_joint_loss(data_dict, config, is_eval=False):
         data_dict: dict
     """
 
-    # Obj loss
-    objectness_loss, objectness_label, objectness_mask, object_assignment = compute_objectness_loss(data_dict)
+    objectness_label, objectness_mask, object_assignment = compute_objectness_loss(data_dict)
     num_proposal = objectness_label.shape[1]
-    total_num_proposal = objectness_label.shape[0]*objectness_label.shape[1]
+    total_num_proposal = objectness_label.shape[0] * objectness_label.shape[1]
     data_dict["objectness_label"] = objectness_label
     data_dict["objectness_mask"] = objectness_mask
     data_dict["object_assignment"] = object_assignment
-    data_dict["pos_ratio"] = torch.sum(objectness_label.float())/float(total_num_proposal)
-    data_dict["neg_ratio"] = torch.sum(objectness_mask.float())/float(total_num_proposal) - data_dict["pos_ratio"]
+    data_dict["pos_ratio"] = torch.sum(objectness_label.float()) / float(total_num_proposal)
+    data_dict["neg_ratio"] = torch.sum(objectness_mask.float()) / float(total_num_proposal) - data_dict["pos_ratio"]
 
     lang_num = data_dict["lang_num"]
     # print(lang_num.float().mean())
@@ -67,9 +61,6 @@ def get_joint_loss(data_dict, config, is_eval=False):
     data_dict["cluster_labels"] = cluster_labels
     data_dict["lang_loss"] = compute_lang_classification_loss(data_dict)
 
-    # data_dict["contra_loss"] = contra_loss(data_dict)
-    # if torch.isnan(data_dict["contra_loss"]):
-    #     print(data_dict["contra_loss"])
     if CONF.mil_type == "nce":
         data_dict["nce_loss"] = MILNCELoss(data_dict, len_num_mask)
     else:

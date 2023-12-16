@@ -29,11 +29,6 @@ class JointNet(nn.Module):
                  emb_size=300, hidden_size=256, dataset_config=None, args=None):
         super().__init__()
 
-        # self.num_class = num_class
-        # self.num_heading_bin = num_heading_bin
-        # self.num_size_cluster = num_size_cluster
-        # self.mean_size_arr = mean_size_arr
-        # assert (mean_size_arr.shape[0] == self.num_size_cluster)
         self.input_feature_dim = input_feature_dim
         self.num_proposal = num_proposal
         self.vote_factor = vote_factor
@@ -90,9 +85,6 @@ class JointNet(nn.Module):
         self.recnet = ReconstructModule(vocab_size=self.vocab_size, hidden_size=hidden_size)
 
         self.match = MatchModule(num_proposals=num_proposal, lang_size=(1 + int(self.use_bidir)) * hidden_size, num_target=num_target, hidden_size=hidden_size)  # bef 256
-
-        # self.caption = TopDownSceneCaptionModule(vocabulary, embeddings, emb_size, 128, caption_hidden_size,
-        #                                          num_proposal, num_locals, query_mode, use_relation)
 
         if args.distribute:
             nn.SyncBatchNorm.convert_sync_batchnorm(self)

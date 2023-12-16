@@ -11,7 +11,7 @@ import torch.nn.functional as F
 
 sys.path.append(os.path.join(os.getcwd(), os.pardir, "lib")) # HACK add the lib folder
 
-from lib.configs.config import CONF
+from config.config import CONF
 
 sys.path.append(os.path.join(os.getcwd(), os.pardir, "utils")) # HACK add the lib folder
 from box_util import get_3d_box

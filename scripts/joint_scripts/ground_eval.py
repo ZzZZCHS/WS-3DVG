@@ -16,7 +16,7 @@ from tqdm import tqdm
 from copy import deepcopy
 
 sys.path.append(os.path.join(os.getcwd())) # HACK add the root folder
-from lib.configs.config import CONF
+from config.config import CONF
 from lib.joint.dataset import ScannetReferenceDataset
 from lib.loss_helper.loss_joint import get_joint_loss
 from lib.joint.eval_ground import get_eval

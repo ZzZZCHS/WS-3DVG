@@ -4,7 +4,7 @@ import sys
 import json
 
 sys.path.append(os.path.join(os.getcwd()))  # HACK add the root folder
-from lib.configs.config import CONF
+from config.config import CONF
 
 SCANREFER = json.load(open(os.path.join(CONF.PATH.DATA, "ScanRefer_filtered.json")))
 
