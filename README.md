@@ -8,6 +8,10 @@ This repository is for the **ICCV 2023** paper "[Distilling Coarse-to-Fine Seman
 3D visual grounding involves finding a target object in a 3D scene that corresponds to a given sentence query. Although many approaches have been proposed and achieved impressive performance, they all require dense object-sentence pair annotations in 3D point clouds, which are both time-consuming and expensive. To address the problem that fine-grained annotated data is difficult to obtain, we propose to leverage weakly supervised annotations to learn the 3D visual grounding model, i.e., only coarse scene-sentence correspondences are used to learn object-sentence links. To accomplish this, we design a novel semantic matching model that analyzes the semantic similarity between object proposals and sentences in a coarse-to-fine manner. Specifically, we first extract object proposals and coarsely select the top-K candidates based on feature and class similarity matrices. Next, we reconstruct the masked keywords of the sentence using each candidate one by one, and the reconstructed accuracy finely reflects the semantic similarity of each candidate to the query. Additionally, we distill the coarse-to-fine semantic matching knowledge into a typical two-stage 3D visual grounding model, which reduces inference costs and improves performance by taking full advantage of the well-studied structure of the existing architectures. We conduct extensive experiments on ScanRefer, Nr3D, and Sr3D, which demonstrate the effectiveness of our proposed method.
 
 
+## News
+
+[2023.12.16] 🔥 Code release.
+
 ## Dataset & Setup
 
 ### Data preparation
@@ -65,6 +69,7 @@ You can download the masked scanrefer annotation [here](https://drive.google.com
 ```shell
 # Create conda environment with PyTorch 1.9.0 & CUDA 10.2
 conda create -n WS-3DVG python=3.8.13
+conda activate WS-3DVG
 conda install pytorch==1.9.0 torchvision==0.10.0 torchaudio==0.9.0 cudatoolkit=10.2 -c pytorch
 
 # Install necessary packages
