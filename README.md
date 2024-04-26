@@ -1,6 +1,6 @@
 # WS-3DVG: Distilling Coarse-to-Fine Semantic Matching Knowledge for Weakly Supervised 3D Visual Grounding
 
-This repository is for the **ICCV 2023** paper "[Distilling Coarse-to-Fine Semantic Matching Knowledge for Weakly Supervised 3D Visual Grounding](https://openaccess.thecvf.com/content/ICCV2023/papers/Wang_Distilling_Coarse-to-Fine_Semantic_Matching_Knowledge_for_Weakly_Supervised_3D_Visual_ICCV_2023_paper.pdf)"
+This is an official repository for the **ICCV 2023** paper "[Distilling Coarse-to-Fine Semantic Matching Knowledge for Weakly Supervised 3D Visual Grounding](https://openaccess.thecvf.com/content/ICCV2023/papers/Wang_Distilling_Coarse-to-Fine_Semantic_Matching_Knowledge_for_Weakly_Supervised_3D_Visual_ICCV_2023_paper.pdf)"
 
 
 ## Introduction
@@ -20,7 +20,7 @@ This repository is for the **ICCV 2023** paper "[Distilling Coarse-to-Fine Seman
 
 1. Download the ScanRefer dataset and unzip it under `data/`. 
 2. Downloadand the preprocessed [GLoVE embeddings (~990MB)](http://kaldir.vc.in.tum.de/glove.p) and put them under `data/`.
-3. Download the ScanNetV2 dataset and put (or link) `scans/` under (or to) `data/scannet/scans/` (Please follow the [ScanNet Instructions](data/scannet/README.md) for downloading the ScanNet dataset).
+3. Download the ScanNetV2 dataset and put (or link) `scans/` under (or to) `data/scannet/scans/` (Please follow the [ScanNet Instructions](https://github.com/ScanNet/ScanNet) for downloading the ScanNet dataset).
 
 > After this step, there should be folders containing the ScanNet scene data under the `data/scannet/scans/` with names like `scene0000_00`
 
@@ -59,14 +59,14 @@ python batch_load_scannet_data.py
    
 Note: We use GroupFree as the 3D encoder in our default code. We also provide code for loading VoteNet. If you want to use VoteNet, download the pretrained checkpoints from their [repo](https://github.com/facebookresearch/votenet). 
 
-7. Prepare masked annotations: (TODO)
-
-You can download the masked scanrefer annotation [here](https://drive.google.com/drive/folders/1Erz6fMwwwWd6Dj_jjXPnU4_2clSlm3O7?usp=drive_link) and put them under `data/scanrefer/`.
+7. Masked annotations: You can download the masked scanrefer annotation [here](https://drive.google.com/drive/folders/1Erz6fMwwwWd6Dj_jjXPnU4_2clSlm3O7?usp=drive_link) and put them under `data/scanrefer/`.
 
 
 ### Setup
 
 ```shell
+git clone --depth 1 https://github.com/ZzZZCHS/WS-3DVG.git
+
 # Create conda environment with PyTorch 1.9.0 & CUDA 10.2
 conda create -n WS-3DVG python=3.8.13
 conda activate WS-3DVG
@@ -87,8 +87,6 @@ To train the WS-3DVG model with default setting:
 ```shell
 python scripts/joint_scripts/train.py
 ```
-Different settings:
-(TODO)
 
 ### Evaluation
 To evaluate the trained models, please find the folder under `outputs/` and run:
