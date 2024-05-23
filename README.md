@@ -55,9 +55,10 @@ python batch_load_scannet_data.py
 > python script/multiview_compute/project_multiview_features.py --maxpool --gpu 1
 > ```
 
-6. Download pretrained GroupFree checkpoints from their [repo](https://github.com/zeliu98/Group-Free-3D). Put them under `pretrained/groupfree/`. We used the (L6, O256) version pretrained on ScanNet v2.
-   
-Note: We use GroupFree as the 3D encoder in our default code. We also provide code for loading VoteNet. If you want to use VoteNet, download the pretrained checkpoints from their [repo](https://github.com/facebookresearch/votenet). 
+6. Download pretrained GroupFree checkpoints from their [repo](https://github.com/zeliu98/Group-Free-3D). Put them under `pretrained/groupfree/`.
+- We used the (L6, O256) version pretrained on ScanNet v2.
+- Note that loading the downloaded checkpoints directly may result in mismatched key names. You can download our processed version from [Google Drive](https://drive.google.com/file/d/1m3nFoqreE_44geoDjFQxzo7vcaeWh4j_/view?usp=sharing).
+- We use GroupFree as the 3D encoder in our default code. We also provide code for loading VoteNet. If you want to use VoteNet, download the pretrained checkpoints from their [repo](https://github.com/facebookresearch/votenet). 
 
 7. Masked annotations: You can download the masked scanrefer annotation [here](https://drive.google.com/drive/folders/1Erz6fMwwwWd6Dj_jjXPnU4_2clSlm3O7?usp=drive_link) and put them under `data/scanrefer/`.
 
